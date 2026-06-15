@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  /* Map Tailwind utilities to our CSS variables */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-accent: var(--accent);
+  --color-border: var(--border);
+  
+  /* Elevate typography */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  :root {
+    /* Champagne Alabaster (Premium Light Theme) */
+    --background: #FCFBF9; /* Soft, warm off-white, drastically reduces eye strain */
+    --foreground: #232220; /* Deep charcoal instead of harsh black */
+    --card: #FFFFFF; /* Pure white cards float beautifully on the off-white background */
+    --border: #E8E3DB; /* Soft, warm beige border */
+    --primary: #C59A3F; /* Refined, subtle Gold */
+    --accent: #E2C78A;
+  }
+
+  [data-theme="sleek-dark"] {
+    /* Obsidian Gold (Premium Dark Theme) */
+    --background: #0A0A09; /* Deep Obsidian */
+    --foreground: #F5F2EB; /* Soft warm white text */
+    --card: #121211; /* Slightly elevated dark surface */
+    --border: #262422; /* Barely-there structural borders */
+    --primary: #D4AF37; /* Classic bright gold for dark mode contrast */
+    --accent: #F2DE9C;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    /* Engine-level font smoothing for a sleek, app-like read */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Smooth transition when swapping themes */
+    transition: background-color 0.4s ease, color 0.4s ease;
+  }
+}
+
+@layer utilities {
+  /* Elegant, minimal custom scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 10px;
+  }
+  .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+    background-color: var(--primary);
+  }
+}
