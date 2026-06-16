@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
-import { ThemeProvider } from "next-themes";
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import "./globals.css";
 
 // 1. Premium Typography Integration

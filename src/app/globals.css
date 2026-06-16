@@ -51,6 +51,15 @@
     width: 4px;
     height: 4px;
   }
+
+  /* Hides the scrollbar entirely for our horizontal snap carousels */
+  .hide-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none; /* Chrome, Safari and Opera */
+  }
   .custom-scrollbar::-webkit-scrollbar-track {
     background: transparent;
   }

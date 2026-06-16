@@ -9,24 +9,49 @@ export const metadata: Metadata = {
   description: "Manage your master product catalog and SKU variants.",
 }
 
+// 1. Define the expected taxonomy structure from the Supabase join
+type TaxonomyRecord = { name: string };
+
+// 2. Strictly type the raw Supabase payload
+interface RawInventoryItem {
+  id: string;
+  title: string;
+  created_at?: string;
+  category?: TaxonomyRecord | TaxonomyRecord[] | null;
+  collection?: TaxonomyRecord | TaxonomyRecord[] | null;
+  product_images?: { url: string; display_order: number }[];
+  variants?: { id: string; stock_quantity: number; price_kes: number; sku: string }[];
+}
+
 export default async function InventoryPage() {
   // Fetch data concurrently for maximum speed
-  const [inventory, taxonomy] = await Promise.all([
+  const [inventoryRaw, taxonomy] = await Promise.all([
     getInventoryData(),
     getTaxonomy()
   ])
 
-  // Single-pass metric calculation
-  const totalProducts = inventory.length
+  // 3. Map the data and explicitly guarantee strict types for the client
+  const formattedInventory = (inventoryRaw || []).map((item: RawInventoryItem) => ({
+    ...item,
+    // Safely cast undefined to null
+    category: (Array.isArray(item.category) ? item.category[0] : item.category) ?? null,
+    collection: (Array.isArray(item.collection) ? item.collection[0] : item.collection) ?? null,
+    // Safely cast undefined to an empty array to satisfy the strict client interfaces
+    variants: item.variants ?? [],
+    product_images: item.product_images ?? [],
+  }))
+
+  // Single-pass metric calculation using the safely formatted data
+  const totalProducts = formattedInventory.length
   let totalVariants = 0
   let lowStockCount = 0
 
-  inventory.forEach((prod) => {
-    const variants = prod.variants || []
+  formattedInventory.forEach((prod) => {
+    // variants is now guaranteed to be an array, so we don't need the fallback here anymore
+    const variants = prod.variants
     totalVariants += variants.length
     
-    // Safely type-check and count low stock items
-    lowStockCount += variants.filter((v: { stock_quantity: number }) => v.stock_quantity < 5).length
+    lowStockCount += variants.filter((v) => v.stock_quantity < 5).length
   })
 
   return (
@@ -73,7 +98,7 @@ export default async function InventoryPage() {
 
       {/* INTERACTIVE CLIENT WORKSPACE */}
       <div className="flex-1 bg-card border border-border rounded-2xl shadow-sm overflow-hidden flex flex-col relative min-h-[500px]">
-        {inventory.length === 0 ? (
+        {formattedInventory.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background/50 h-full">
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-6 text-primary">
               <PackageSearch size={40} />
@@ -90,7 +115,7 @@ export default async function InventoryPage() {
             </Link>
           </div>
         ) : (
-          <InventoryClient initialData={inventory} taxonomy={taxonomy} />
+          <InventoryClient initialData={formattedInventory} taxonomy={taxonomy} />
         )}
       </div>
     </div>
