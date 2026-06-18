@@ -1,113 +1,89 @@
-// src/components/home/FeaturedCollections.tsx
 'use client';
 
-import { useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import ProductCard, { Product } from '@/components/storefront/ProductCard';
+import { useState, useMemo } from 'react';
+import { PackageSearch } from 'lucide-react';
+import { Product } from '@/components/storefront/ProductCard';
+import CategoryRow from './CategoryRow';
+import DynamicIslandFilter, { SortOption } from './DynamicIslandFilter';
 
 interface FeaturedCollectionsProps {
   products: (Product & { category: string })[];
-  categories: string[];
+  categories: string[]; // ['Wigs', 'Extensions', 'Accessories', etc.]
 }
 
 export default function FeaturedCollections({ products, categories }: FeaturedCollectionsProps) {
-  const [activeTab, setActiveTab] = useState('All Exclusives');
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('featured');
 
-  // Filter logic runs instantly on the client side without re-fetching
-  const filteredProducts = products.filter(
-    (product) => activeTab === 'All Exclusives' || product.category === activeTab
-  );
+  // Intelligent Filter & Sort Engine
+  const processedProducts = useMemo(() => {
+    let result = [...products];
 
-  const scroll = (direction: 'left' | 'right') => {
-    if (scrollContainerRef.current) {
-      const scrollAmount = window.innerWidth > 768 ? 600 : 300;
-      scrollContainerRef.current.scrollBy({
-        left: direction === 'left' ? -scrollAmount : scrollAmount,
-        behavior: 'smooth',
-      });
+    // 1. Text Search Filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(p => p.title.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
     }
-  };
 
-  if (products.length === 0) {
-    return null; // Or return a sleek empty state component if no inventory exists
-  }
+    // 2. Sorting Logic
+    if (sortOption === 'price-asc') {
+      result.sort((a, b) => Math.min(...a.variants.map(v => v.price_kes)) - Math.min(...b.variants.map(v => v.price_kes)));
+    } else if (sortOption === 'price-desc') {
+      result.sort((a, b) => Math.max(...a.variants.map(v => v.price_kes)) - Math.max(...b.variants.map(v => v.price_kes)));
+    }
+    // If 'featured', we leave it in the original array order (which you fetched via limit/order in Supabase)
+
+    return result;
+  }, [products, searchQuery, sortOption]);
+
+  if (products.length === 0) return null;
 
   return (
-    <section className="w-full py-24 bg-background overflow-hidden">
-      <div className="max-w-7xl mx-auto px-6 md:px-12 flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
-        
-        <div>
-          <h2 className="text-3xl md:text-5xl font-serif text-foreground mb-4">
-            Curated For You
-          </h2>
-          <p className="text-stone-500 font-light text-sm md:text-base max-w-md">
-            Explore our most sought-after collections. Masterfully sourced to ensure unparalleled longevity and luster.
-          </p>
-        </div>
+    <section className="w-full relative pb-24 bg-background">
+      
+      {/* The Hovering Control Center */}
+      <DynamicIslandFilter 
+        searchQuery={searchQuery} 
+        setSearchQuery={setSearchQuery}
+        sortOption={sortOption}
+        setSortOption={setSortOption}
+      />
 
-        <div className="flex overflow-x-auto hide-scrollbar gap-6 md:gap-8 pb-2 border-b border-border w-full md:w-auto">
-          {categories.map((category) => (
-            <button
-              key={category}
-              onClick={() => setActiveTab(category)}
-              className={`relative pb-3 text-sm font-medium uppercase tracking-wider transition-colors whitespace-nowrap z-10 ${
-                activeTab === category ? 'text-primary' : 'text-stone-400 hover:text-foreground'
-              }`}
-            >
-              {category}
-              {activeTab === category && (
-                <motion.div
-                  layoutId="activeTabIndicator"
-                  className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary"
-                  initial={false}
-                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                />
-              )}
-            </button>
-          ))}
-        </div>
+      {/* Intro Typography */}
+      <div className="max-w-[1600px] mx-auto px-6 md:px-12 mt-12 md:mt-20 mb-12 md:mb-16 text-center">
+        <h1 className="text-4xl md:text-6xl font-serif text-foreground mb-6 tracking-tight">
+          Explore the Catalog
+        </h1>
+        <p className="text-muted-foreground font-light text-base md:text-lg max-w-2xl mx-auto">
+          Masterfully sourced selections to ensure unparalleled longevity and luster. Scroll horizontally to explore categories.
+        </p>
       </div>
 
-      <div className="relative max-w-[1400px] mx-auto group">
-        <button 
-          onClick={() => scroll('left')}
-          className="absolute left-4 top-1/2 -translate-y-1/2 z-30 bg-background/80 backdrop-blur-md p-3 rounded-full shadow-lg border border-border opacity-0 group-hover:opacity-100 transition-opacity duration-300 hidden md:block hover:scale-110 hover:text-primary"
-          aria-label="Scroll left"
-        >
-          <ChevronLeft size={24} strokeWidth={1.5} />
-        </button>
-
-        <div 
-          ref={scrollContainerRef}
-          className="flex overflow-x-auto hide-scrollbar snap-x snap-mandatory px-6 md:px-12 gap-4 md:gap-6 pb-12 pt-4"
-        >
-          <AnimatePresence mode="popLayout">
-            {filteredProducts.map((product) => (
-              <motion.div
-                key={product.id}
-                layout
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                transition={{ duration: 0.4, ease: [0.21, 0.47, 0.32, 0.98] }}
-                className="w-[75vw] sm:w-[45vw] md:w-[30vw] lg:w-[22vw] flex-none snap-start"
-              >
-                <ProductCard product={product} />
-              </motion.div>
-            ))}
-          </AnimatePresence>
+      {/* Zero State for Search */}
+      {processedProducts.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 px-6 opacity-70">
+          <PackageSearch size={48} className="text-muted-foreground mb-4" />
+          <h3 className="text-xl font-medium text-foreground">No matches found</h3>
+          <p className="text-sm text-muted-foreground mt-2">Try adjusting your search terms or filters.</p>
         </div>
+      )}
 
-        <button 
-          onClick={() => scroll('right')}
-          className="absolute right-4 top-1/2 -translate-y-1/2 z-30 bg-background/80 backdrop-blur-md p-3 rounded-full shadow-lg border border-border opacity-0 group-hover:opacity-100 transition-opacity duration-300 hidden md:block hover:scale-110 hover:text-primary"
-          aria-label="Scroll right"
-        >
-          <ChevronRight size={24} strokeWidth={1.5} />
-        </button>
+      {/* Render Airbnb-Style Vertical Category Stack */}
+      <div className="max-w-[1600px] mx-auto">
+        {categories.map((category) => {
+          // Filter the globally processed products to just this row's category
+          const categoryProducts = processedProducts.filter(p => p.category === category);
+          
+          return (
+            <CategoryRow 
+              key={category} 
+              category={category} 
+              products={categoryProducts} 
+            />
+          );
+        })}
       </div>
+
     </section>
   );
 }
