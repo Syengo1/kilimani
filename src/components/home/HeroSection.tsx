@@ -6,7 +6,7 @@ import { ArrowRight, MapPin } from 'lucide-react';
 
 export default function HeroSection() {
   return (
-    <section className="relative w-full min-h-[calc(100vh-4rem)] md:min-h-[calc(100vh-5rem)] flex items-start overflow-hidden pt-8 md:pt-12 pb-16 md:pb-24">
+    <section className="relative w-full min-h-[calc(100vh-4rem)] md:min-h-[calc(100vh-5rem)] flex items-start overflow-hidden pt-28 md:pt-32 pb-16 md:pb-24">
       
       {/* 1. The Physical Store Background Image */}
       <div className="absolute inset-0 w-full h-full z-0">

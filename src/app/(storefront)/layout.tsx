@@ -12,7 +12,7 @@ export default function StorefrontLayout({ children }: { children: React.ReactNo
         <StorefrontHeader />
         
         {/* Main Content Workspace */}
-        <main className="flex-1 pt-16 md:pt-20 pb-20 md:pb-0">
+        <main className="flex-1 pb-20 md:pb-0">
           {children}
         </main>
 
