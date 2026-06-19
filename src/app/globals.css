@@ -75,3 +75,36 @@
     background-color: var(--primary);
   }
 }
+
+/* =========================================
+   THEME CURTAIN WIPE (VIEW TRANSITIONS API)
+   ========================================= */
+
+/* Disable the default crossfade animation */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* The old theme stays pinned to the back */
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+/* The new theme sits on top and wipes downwards */
+::view-transition-new(root) {
+  z-index: 2;
+  /* Adjust the 0.7s duration to make it faster or slower */
+  animation: wipe-down 0.7s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* The mathematical clipping mask that creates the top-to-bottom sweep */
+@keyframes wipe-down {
+  0% {
+    clip-path: inset(0 0 100% 0); /* Bottom edge is pulled 100% to the top (Hidden) */
+  }
+  100% {
+    clip-path: inset(0 0 0 0); /* Bottom edge extends fully to the bottom (Revealed) */
+  }
+}
