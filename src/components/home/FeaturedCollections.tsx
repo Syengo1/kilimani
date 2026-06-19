@@ -85,7 +85,7 @@ export default function FeaturedCollections({ products, categories }: FeaturedCo
         </div>
       )}
 
-      <div className="max-w-[1600px] mx-auto flex flex-col gap-8 md:gap-12">
+      <div className="max-w-[1600px] mx-auto flex flex-col gap-0 md:gap-0">
         {activeCategories.map((category, index) => {
           const categoryProducts = processedProducts.filter(p => p.category === category);
           return (
