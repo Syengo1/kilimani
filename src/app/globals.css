@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* 1. ADDED: Tells Tailwind v4 to trigger dark mode via the .dark class */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* Map Tailwind utilities to our CSS variables */
   --color-background: var(--background);
@@ -24,7 +27,8 @@
     --accent: #E2C78A;
   }
 
-  [data-theme="sleek-dark"] {
+  /* 2. FIXED: Changed [data-theme="sleek-dark"] to .dark to match next-themes */
+  .dark {
     /* Obsidian Gold (Premium Dark Theme) */
     --background: #0A0A09; /* Deep Obsidian */
     --foreground: #F5F2EB; /* Soft warm white text */
@@ -40,8 +44,8 @@
     /* Engine-level font smoothing for a sleek, app-like read */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Smooth transition when swapping themes */
-    transition: background-color 0.4s ease, color 0.4s ease;
+    /* 3. PERFECTED: Lengthened transition slightly to match the 500ms React transitions */
+    transition: background-color 0.5s ease-in-out, color 0.5s ease-in-out;
   }
 }
 
