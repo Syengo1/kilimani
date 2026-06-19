@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* 1. ADDED: Tells Tailwind v4 to trigger dark mode via the .dark class */
+/* 1. ADDED: Tells Tailwind v4 to trigger dark mode via the .dark class injected by next-themes */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
@@ -19,22 +19,22 @@
 @layer base {
   :root {
     /* Champagne Alabaster (Premium Light Theme) */
-    --background: #FCFBF9; /* Soft, warm off-white, drastically reduces eye strain */
-    --foreground: #232220; /* Deep charcoal instead of harsh black */
-    --card: #FFFFFF; /* Pure white cards float beautifully on the off-white background */
-    --border: #E8E3DB; /* Soft, warm beige border */
-    --primary: #C59A3F; /* Refined, subtle Gold */
+    --background: #FCFBF9; 
+    --foreground: #232220; 
+    --card: #FFFFFF; 
+    --border: #E8E3DB; 
+    --primary: #C59A3F; 
     --accent: #E2C78A;
   }
 
-  /* 2. FIXED: Changed [data-theme="sleek-dark"] to .dark to match next-themes */
+  /* 2. FIXED: Changed [data-theme="sleek-dark"] to .dark to perfectly match your ThemeProvider */
   .dark {
     /* Obsidian Gold (Premium Dark Theme) */
-    --background: #0A0A09; /* Deep Obsidian */
-    --foreground: #F5F2EB; /* Soft warm white text */
-    --card: #121211; /* Slightly elevated dark surface */
-    --border: #262422; /* Barely-there structural borders */
-    --primary: #D4AF37; /* Classic bright gold for dark mode contrast */
+    --background: #0A0A09; 
+    --foreground: #F5F2EB; 
+    --card: #121211; 
+    --border: #262422; 
+    --primary: #D4AF37; 
     --accent: #F2DE9C;
   }
 
@@ -44,8 +44,8 @@
     /* Engine-level font smoothing for a sleek, app-like read */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* 3. PERFECTED: Lengthened transition slightly to match the 500ms React transitions */
-    transition: background-color 0.5s ease-in-out, color 0.5s ease-in-out;
+    /* Smooth transition when swapping themes */
+    transition: background-color 0.4s ease, color 0.4s ease;
   }
 }
 
