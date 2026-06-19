@@ -1,6 +1,7 @@
 import { CartProvider } from '@/components/storefront/cart/CartContext';
 import StorefrontHeader from '@/components/storefront/StorefrontHeader';
 import StorefrontMobileNav from '@/components/storefront/StorefrontMobileNav';
+import Footer from '@/components/layout/Footer';
 
 export default function StorefrontLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -16,6 +17,7 @@ export default function StorefrontLayout({ children }: { children: React.ReactNo
         </main>
 
         {/* Global Storefront Footer could go here */}
+        <Footer/>
 
         {/* Mobile Navbar docked at the bottom */}
         <StorefrontMobileNav />
