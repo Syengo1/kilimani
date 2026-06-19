@@ -1,0 +1,26 @@
+import { CartProvider } from '@/components/storefront/cart/CartContext';
+import StorefrontHeader from '@/components/storefront/StorefrontHeader';
+import StorefrontMobileNav from '@/components/storefront/StorefrontMobileNav';
+
+export default function StorefrontLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <CartProvider>
+      <div className="min-h-screen flex flex-col relative bg-background">
+        
+        {/* Fixed Header Height Offset */}
+        <StorefrontHeader />
+        
+        {/* Main Content Workspace */}
+        <main className="flex-1 pt-16 md:pt-20 pb-20 md:pb-0">
+          {children}
+        </main>
+
+        {/* Global Storefront Footer could go here */}
+
+        {/* Mobile Navbar docked at the bottom */}
+        <StorefrontMobileNav />
+        
+      </div>
+    </CartProvider>
+  );
+}
