@@ -1,20 +1,40 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { ShoppingBag } from 'lucide-react';
+import { usePathname, useSearchParams, useRouter } from 'next/navigation';
+import { ShoppingBag } from 'lucide-react'; // Menu icon removed
 import { ThemeToggle } from '@/components/dashboard/ThemeToggle';
 import StorefrontSearch from './StorefrontSearch';
 import { useCart } from './cart/CartContext';
 import CartDrawer from './cart/CartDrawer';
 
+// ============================================================================
+// MICRO-LISTENER: Safely catches the ?cart=open URL parameter
+// ============================================================================
+function CartQueryListener({ openCart }: { openCart: () => void }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (searchParams.get('cart') === 'open') {
+      openCart();
+      router.replace(pathname, { scroll: false });
+    }
+  }, [searchParams, pathname, router, openCart]);
+
+  return null;
+}
+
 export default function StorefrontHeader() {
   const pathname = usePathname();
   const { items, isHydrated } = useCart();
+  
+  // SINGLE SOURCE OF TRUTH: The Header owns the drawer state
   const [isCartOpen, setIsCartOpen] = useState(false);
   
-  // Advanced Scroll-Aware State
+  // Advanced Scroll-Aware State for Apple-Tier Header Animation
   const [isScrolled, setIsScrolled] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
   
@@ -26,28 +46,38 @@ export default function StorefrontHeader() {
     { href: '/about', label: 'Our Story' },
   ];
 
-  // High-Performance Scroll Tracker
+  // EVENT BRIDGE: Listens for the mobile nav remote control
+  useEffect(() => {
+    const handleOpenCart = () => setIsCartOpen(true);
+    window.addEventListener('open-cart-drawer', handleOpenCart);
+    return () => window.removeEventListener('open-cart-drawer', handleOpenCart);
+  }, []);
+
+  // HIGH-PERFORMANCE SCROLL TRACKER
   useEffect(() => {
     let lastScrollY = window.scrollY;
+    let ticking = false;
 
     const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-
-      // 1. Determine if we are at the top of the page
-      if (currentScrollY < 50) {
-        setIsScrolled(false);
-        setIsHidden(false);
-      } else {
-        setIsScrolled(true);
-        // 2. Hide if scrolling down (and past the 100px threshold), Show if scrolling up
-        if (currentScrollY > lastScrollY && currentScrollY > 100) {
-          setIsHidden(true);
-        } else {
-          setIsHidden(false);
-        }
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const currentScrollY = window.scrollY;
+          
+          // Apply blur/border when scrolled past 20px
+          setIsScrolled(currentScrollY > 20);
+          
+          // Hide header on scroll down to save screen real estate, show instantly on scroll up
+          if (currentScrollY > lastScrollY && currentScrollY > 100) {
+            setIsHidden(true);
+          } else {
+            setIsHidden(false);
+          }
+          
+          lastScrollY = currentScrollY;
+          ticking = false;
+        });
+        ticking = true;
       }
-      
-      lastScrollY = currentScrollY;
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
@@ -56,43 +86,47 @@ export default function StorefrontHeader() {
 
   return (
     <>
-      <header 
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${
-          isHidden ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100'
+      <Suspense fallback={null}>
+        <CartQueryListener openCart={() => setIsCartOpen(true)} />
+      </Suspense>
+
+      <header
+        className={`fixed top-0 left-0 right-0 z-40 transition-all duration-500 ease-in-out ${
+          isHidden ? '-translate-y-full' : 'translate-y-0'
         } ${
           isScrolled 
-            ? 'h-16 md:h-20 bg-background/90 backdrop-blur-xl border-b border-border/50 shadow-sm' 
-            : 'h-20 md:h-24 bg-gradient-to-b from-background/80 via-background/40 to-transparent border-transparent'
+            ? 'bg-background/85 backdrop-blur-lg border-b border-border/40 shadow-sm' 
+            : 'bg-transparent border-b-transparent' // PERFECT BLEND: Transparent at the top
         }`}
       >
-        <div className="max-w-[1600px] mx-auto h-full px-4 md:px-8 flex items-center justify-between">
+        <div className="max-w-[1200px] mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
           
-          {/* Left: Identity */}
-          <div className="flex items-center gap-8">
-            <Link href="/" className="flex items-center gap-2 group shrink-0">
-              <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-serif font-bold text-sm shadow-lg group-active:scale-95 transition-transform">
-                K
-              </div>
-              <span className="text-lg md:text-xl font-serif font-bold tracking-wide text-foreground">
-                Kilimani
-              </span>
+          {/* FAR LEFT: Business Name / Logo */}
+          <div className="flex-1 flex justify-start">
+            <Link 
+              href="/" 
+              className="text-xl md:text-2xl font-serif font-bold tracking-tight text-foreground hover:opacity-80 transition-opacity"
+            >
+              Kilimani Hair
             </Link>
+          </div>
 
-            {/* Center-Left Desktop Navigation Links */}
-            <nav className="hidden md:flex items-center gap-6">
+          {/* CENTER: Desktop Navigation (Hidden on Mobile) */}
+          <div className="hidden md:flex items-center justify-center">
+            <nav className="flex items-center gap-8">
               {links.map((link) => {
-                const isActive = link.href === '/' ? pathname === '/' : pathname.startsWith(link.href);
+                const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
                 return (
                   <Link
                     key={link.href}
                     href={link.href}
-                    className={`text-sm font-medium tracking-wide transition-colors relative py-2 ${
-                      isActive ? 'text-foreground' : 'text-foreground/70 hover:text-foreground'
+                    className={`relative text-sm font-medium transition-colors hover:text-foreground py-2 ${
+                      isActive ? 'text-foreground' : 'text-muted-foreground'
                     }`}
                   >
                     {link.label}
                     {isActive && (
-                      <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary rounded-full shadow-[0_0_8px_rgba(var(--primary),0.5)]" />
+                      <span className="absolute left-0 bottom-0 w-full h-[2px] bg-foreground rounded-full animate-in fade-in duration-300" />
                     )}
                   </Link>
                 );
@@ -100,32 +134,39 @@ export default function StorefrontHeader() {
             </nav>
           </div>
 
-          {/* Right Actions Block */}
-          <div className="flex items-center gap-1 md:gap-3 flex-1 justify-end">
+          {/* FAR RIGHT: Search, Theme Toggle, & Desktop Cart */}
+          <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-2 md:gap-3">
+            
+            {/* Search Icon (Now perfectly next to Theme Toggle on all devices) */}
             <StorefrontSearch />
-            <div className="h-5 w-[1px] bg-border/50 mx-1 md:mx-2 hidden sm:block" />
+            
+            <div className="h-4 w-[1px] bg-border/60 mx-1" />
+            
             <ThemeToggle />
 
-            {/* Desktop Cart Button */}
+            {/* Desktop Cart Button (Strictly hidden on mobile) */}
             <button 
               onClick={() => setIsCartOpen(true)}
               className="relative p-2 rounded-full hover:bg-foreground/10 text-foreground/80 hover:text-foreground transition-all active:scale-95 focus:outline-none shrink-0 ml-1 hidden md:flex items-center justify-center"
               aria-label="Open Cart"
             >
               <ShoppingBag size={22} strokeWidth={1.5} />
+              
               {isHydrated && cartItemCount > 0 && (
-                <span className="absolute top-1 right-1 translate-x-1/4 -translate-y-1/4 flex items-center justify-center min-w-4 h-4 px-1 text-[9px] font-bold text-primary-foreground bg-primary rounded-full shadow-md animate-in zoom-in duration-300">
+                <span className="absolute top-1 right-1 translate-x-1/4 -translate-y-1/4 flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold text-background bg-foreground rounded-full shadow-md animate-in zoom-in duration-300">
                   {cartItemCount}
                 </span>
               )}
             </button>
           </div>
-
         </div>
       </header>
 
-      {/* The Cart Drawer overlay */}
-      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+      {/* The ONLY instance of the Drawer in the entire application */}
+      <CartDrawer 
+        isOpen={isCartOpen} 
+        onClose={() => setIsCartOpen(false)} 
+      />
     </>
   );
 }

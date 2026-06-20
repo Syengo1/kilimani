@@ -1,15 +1,15 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { calculateDistance, calculateDeliveryFee } from '@/lib/checkout/haversine';
+import { initiateSTKPush } from '@/lib/mpesa/daraja'; // 1. IMPORT DARAJA ENGINE
 
 export type CheckoutCartItem = {
   variant_id: string;
   quantity: number;
 };
 
-// 1. STRICT TYPING FIX: Replaced 'any' with a secure, defined interface.
-// This allows specific fields while safely supporting flexible JSONB data via [key: string]: unknown.
 export interface ShippingAddress {
   street?: string;
   building?: string;
@@ -21,19 +21,26 @@ export interface ShippingAddress {
 export type CheckoutPayload = {
   customer_name: string;
   customer_email: string;
-  customer_phone: string; // Must be validated frontend side (e.g. 2547...)
+  customer_phone: string; 
   delivery_type: 'pickup' | 'delivery';
-  shipping_address?: ShippingAddress | null; // ERROR 1 FIXED
+  shipping_address?: ShippingAddress | null; 
   latitude?: number;
   longitude?: number;
   cart_items: CheckoutCartItem[];
 };
 
 export async function processSecureCheckout(payload: CheckoutPayload) {
-  const supabase = await createClient();
+  // 1. Initialize Clients
+  const supabase = await createClient(); // Standard client for the RPC transaction
+  
+  // Admin client required to bypass RLS for fetching the true total and updating the checkout ID
+  const supabaseAdmin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
   try {
-    // 1. Calculate Delivery Fee Securely on the Server
+    // 2. Calculate Delivery Fee Securely on the Server
     let deliveryFee = 0;
     
     if (payload.delivery_type === 'delivery') {
@@ -44,7 +51,8 @@ export async function processSecureCheckout(payload: CheckoutPayload) {
       deliveryFee = calculateDeliveryFee(distance);
     }
 
-    // 2. Execute the Unbreakable Database Transaction
+    // 3. Execute the Unbreakable Database Transaction
+    // (This securely deducts inventory, handles math, and generates the Order Ref)
     const { data: orderRef, error } = await supabase.rpc('process_checkout', {
       p_customer_name: payload.customer_name,
       p_customer_email: payload.customer_email,
@@ -58,23 +66,63 @@ export async function processSecureCheckout(payload: CheckoutPayload) {
     });
 
     if (error) {
-      // Supabase throws our custom exceptions here (e.g., "Insufficient stock")
       console.error("Checkout Transaction Failed:", error);
       return { success: false, message: error.message };
     }
 
-    // 3. Return the generated Order ID to proceed to M-Pesa
+    // 4. FETCH THE TRUE DATABASE-CALCULATED TOTAL
+    // (We strictly use the database amount, never trusting the frontend cart math)
+    const { data: orderData, error: fetchError } = await supabaseAdmin
+      .from('orders')
+      .select('total_amount')
+      .eq('order_ref', orderRef)
+      .single();
+
+    if (fetchError || !orderData) {
+      console.error("Failed to fetch order total:", fetchError);
+      return { success: false, message: "Order secured, but financial verification failed." };
+    }
+
+    // 5. TRIGGER SAFARICOM STK PUSH
+    try {
+      const stkResponse = await initiateSTKPush(
+        payload.customer_phone, 
+        orderData.total_amount, 
+        orderRef
+      );
+
+      // 6. CRITICAL: SAVE THE SAFARICOM CHECKOUT ID TO THE DATABASE
+      // We must use the Admin Client here because our RLS rules block normal clients from updating orders.
+      const { error: updateError } = await supabaseAdmin
+        .from('orders')
+        .update({ mpesa_checkout_id: stkResponse.checkoutRequestId })
+        .eq('order_ref', orderRef);
+
+      if (updateError) {
+        console.error("Critical: Failed to save M-Pesa Request ID:", updateError);
+        throw new Error("Database failed to link transaction. Please try again.");
+      }
+
+    } catch (stkError: unknown) {
+      console.error("Daraja STK Push Failed:", stkError);
+      
+      const errorMessage = stkError instanceof Error 
+        ? stkError.message 
+        : "Failed to connect to Safaricom. Please ensure your phone is on and try again.";
+        
+      return { success: false, message: errorMessage };
+    }
+
+    // 7. Complete the Loop
     return { 
       success: true, 
       orderRef: orderRef,
-      message: "Inventory secured. Proceeding to payment."
+      message: "Inventory secured. Prompt sent to phone."
     };
 
-  // 2. STRICT ERROR HANDLING: Replaced 'any' with 'unknown'
-  } catch (err: unknown) { // ERROR 2 FIXED
+  } catch (err: unknown) {
     console.error("Secure Checkout Exception:", err);
     
-    // Safely verify that the unknown error is actually an Error object before reading its message
     const errorMessage = err instanceof Error 
       ? err.message 
       : "An unexpected system error occurred during checkout.";
