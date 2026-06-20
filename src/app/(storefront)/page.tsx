@@ -1,8 +1,9 @@
 import { createClient } from '@/lib/supabase/server';
 import HeroSection from '@/components/home/HeroSection';
 import FeaturedCollections from '@/components/home/FeaturedCollections';
-// import Footer from '@/components/layout/Footer';
+import Footer from '@/components/layout/Footer';
 import { Product } from '@/components/storefront/ProductCard';
+import CartAutoOpener from '@/components/storefront/CartAutoOpener'; // 1. IMPORT THE LISTENER
 
 export const revalidate = 60;
 
@@ -64,21 +65,22 @@ export default async function HomePage() {
       id: p.id,
       title: p.title,
       base_attributes: p.base_attributes || {},
-      category: categoryName || 'Premium Collection', // Ironclad fallback
+      category: categoryName || 'Premium Collection',
       images: p.product_images || [],
       variants: p.product_variants || [],
     };
   });
 
   // 3. CATALOG SORTING
-  // Extracts unique categories and sorts them alphabetically for a consistent UX
   const dynamicCategories = Array.from(
     new Set(formattedProducts.map(p => p.category))
   ).filter(Boolean).sort();
 
   return (
-    // 4. THEME FLUIDITY: transition-colors duration-500 eases background shifts
     <div className="flex min-h-screen flex-col bg-background transition-colors duration-500 ease-in-out selection:bg-primary/20">
+      
+      {/* 2. MOUNT THE LISTENER: Sits silently at the top of the tree */}
+      <CartAutoOpener />
       
       <HeroSection />
       
@@ -87,7 +89,7 @@ export default async function HomePage() {
         categories={dynamicCategories} 
       />
       
-      {/* <Footer /> */}
+      <Footer />
     </div>
   );
 }
