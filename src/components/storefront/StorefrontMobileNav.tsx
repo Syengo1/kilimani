@@ -1,5 +1,6 @@
 'use client';
 
+import React, { useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Sparkles, ShoppingBag, Search } from 'lucide-react';
@@ -9,8 +10,10 @@ export default function StorefrontMobileNav() {
   const pathname = usePathname();
   const { items, isHydrated } = useCart();
 
-  // Safely calculate total items
-  const cartCount = items.reduce((total, item) => total + item.quantity, 0);
+  // PERFORMANCE FIX: Memoize total items calculation
+  const cartCount = useMemo(() => {
+    return items.reduce((total, item) => total + item.quantity, 0);
+  }, [items]);
 
   const navItems = [
     { href: '/', label: 'Home', icon: Home },
@@ -18,10 +21,14 @@ export default function StorefrontMobileNav() {
     { href: '/search', label: 'Search', icon: Search },
   ];
 
-  // THE REMOTE CONTROL: Fires the signal to the StorefrontHeader
-  const handleOpenCart = () => {
+  // PERFORMANCE FIX: Memoize the event dispatcher
+  const handleOpenCart = useCallback(() => {
+    // Optional: Add a tiny native haptic feedback for mobile devices
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(50);
+    }
     window.dispatchEvent(new CustomEvent('open-cart-drawer'));
-  };
+  }, []);
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background/90 backdrop-blur-xl border-t border-border/50 flex items-center justify-around px-2 z-40 pt-1 pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.08)]">
@@ -60,7 +67,7 @@ export default function StorefrontMobileNav() {
         <div className="relative p-1.5 rounded-full transition-colors duration-300 text-muted-foreground group-hover:text-foreground">
           <ShoppingBag size={22} strokeWidth={1.5} />
           
-          {/* Dynamic Notification Badge */}
+          {/* Dynamic Notification Badge with Ring Punch-Out */}
           {isHydrated && cartCount > 0 && (
             <span className="absolute top-0 right-0 translate-x-1/4 -translate-y-1/4 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold text-primary-foreground bg-primary rounded-full ring-2 ring-background shadow-sm animate-in zoom-in duration-300">
               {cartCount > 99 ? '99+' : cartCount}

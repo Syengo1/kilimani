@@ -1,28 +1,33 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import Link from 'next/link';
-import { usePathname, useSearchParams, useRouter } from 'next/navigation';
-import { ShoppingBag } from 'lucide-react'; // Menu icon removed
+import { usePathname, useSearchParams } from 'next/navigation';
+import { ShoppingBag } from 'lucide-react';
 import { ThemeToggle } from '@/components/dashboard/ThemeToggle';
 import StorefrontSearch from './StorefrontSearch';
 import { useCart } from './cart/CartContext';
 import CartDrawer from './cart/CartDrawer';
 
 // ============================================================================
-// MICRO-LISTENER: Safely catches the ?cart=open URL parameter
+// MICRO-LISTENER: Flawlessly catches and wipes the ?cart=open URL parameter
 // ============================================================================
 function CartQueryListener({ openCart }: { openCart: () => void }) {
   const searchParams = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
 
   useEffect(() => {
+    // 1. Check if the command exists in the URL
     if (searchParams.get('cart') === 'open') {
+      // 2. Open the drawer
       openCart();
-      router.replace(pathname, { scroll: false });
+      
+      // 3. THE TRAPPED-FOCUS FIX: Bypass Next.js router for the cleanup.
+      // Use native browser History API to silently wipe the parameter from the address bar
+      // This guarantees the URL is cleaned without triggering ANY React re-renders or router loops.
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
     }
-  }, [searchParams, pathname, router, openCart]);
+  }, [searchParams, openCart]); 
 
   return null;
 }
@@ -31,14 +36,17 @@ export default function StorefrontHeader() {
   const pathname = usePathname();
   const { items, isHydrated } = useCart();
   
-  // SINGLE SOURCE OF TRUTH: The Header owns the drawer state
+  // Single Source of Truth for Drawer State
   const [isCartOpen, setIsCartOpen] = useState(false);
   
-  // Advanced Scroll-Aware State for Apple-Tier Header Animation
+  // Scroll-Aware Animation States
   const [isScrolled, setIsScrolled] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
   
-  const cartItemCount = items.reduce((total, item) => total + item.quantity, 0);
+  // PERFORMANCE FIX: Memoize the cart calculation so it doesn't run during scroll re-renders
+  const cartItemCount = useMemo(() => {
+    return items.reduce((total, item) => total + item.quantity, 0);
+  }, [items]);
 
   const links = [
     { href: '/', label: 'Home' },
@@ -137,7 +145,6 @@ export default function StorefrontHeader() {
           {/* FAR RIGHT: Search, Theme Toggle, & Desktop Cart */}
           <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-2 md:gap-3">
             
-            {/* Search Icon (Now perfectly next to Theme Toggle on all devices) */}
             <StorefrontSearch />
             
             <div className="h-4 w-[1px] bg-border/60 mx-1" />
@@ -154,7 +161,7 @@ export default function StorefrontHeader() {
               
               {isHydrated && cartItemCount > 0 && (
                 <span className="absolute top-1 right-1 translate-x-1/4 -translate-y-1/4 flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold text-background bg-foreground rounded-full shadow-md animate-in zoom-in duration-300">
-                  {cartItemCount}
+                  {cartItemCount > 99 ? '99+' : cartItemCount}
                 </span>
               )}
             </button>
