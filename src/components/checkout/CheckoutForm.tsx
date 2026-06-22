@@ -4,6 +4,7 @@ import React, { useState, useTransition } from 'react';
 import { processSecureCheckout, CheckoutCartItem } from '@/app/actions/checkout';
 import { CheckoutFormState, FormErrors } from '@/types/checkout';
 import FulfillmentToggle from './FulfillmentToggle';
+import DeliveryAddressForm from './DeliveryAddressForm'; // <-- The new module
 import { MapPin, Phone, Mail, User, CreditCard, Loader2 } from 'lucide-react';
 
 interface CheckoutFormProps {
@@ -15,7 +16,8 @@ interface CheckoutFormProps {
 export default function CheckoutForm({ cartItems, subtotal, onSuccess }: CheckoutFormProps) {
   const [isPending, startTransition] = useTransition();
   const [errors, setErrors] = useState<FormErrors>({});
-  
+  const [isAddressVerified, setIsAddressVerified] = useState(false);
+
   const [form, setForm] = useState<CheckoutFormState>({
     customer_name: '',
     customer_email: '',
@@ -23,29 +25,28 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess }: Checkou
     delivery_type: 'delivery',
     street: '',
     building: '',
-    city: 'Nairobi',
+    city: '',
     notes: '',
-    // Simulated coordinates for Kilimani/Ngong area delivery zone matching
-    latitude: -1.2921,
-    longitude: 36.8219,
+    latitude: 0,
+    longitude: 0,
   });
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
     if (!form.customer_name.trim()) newErrors.customer_name = 'Full name is required.';
     
-    // Strict email check
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(form.customer_email)) newErrors.customer_email = 'Provide a valid email address.';
 
-    // M-Pesa standard regex matching 2547..., 2541..., 07..., 01... formats
     const phoneRegex = /^(?:254|\+254|0)?([71]\d{8})$/;
     if (!phoneRegex.test(form.customer_phone.replace(/\s+/g, ''))) {
       newErrors.customer_phone = 'Enter a valid Safaricom phone number.';
     }
 
     if (form.delivery_type === 'delivery') {
-      if (!form.street.trim()) newErrors.street = 'Delivery address or street details required.';
+      if (!isAddressVerified || form.latitude === 0) {
+        newErrors.street = 'Please select a verified address from the map or dropdown.';
+      }
       if (!form.city.trim()) newErrors.city = 'City field cannot be empty.';
     }
 
@@ -97,14 +98,15 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess }: Checkou
   return (
     <form onSubmit={handleSubmit} className="space-y-8 max-w-xl mx-auto w-full">
       {errors.global && (
-        <div className="p-4 bg-destructive/10 border border-destructive/20 text-destructive text-xs font-medium rounded-xl">
+        <div className="p-4 bg-destructive/10 border border-destructive/20 text-destructive text-xs font-medium rounded-xl flex items-center gap-2">
+          <Loader2 size={16} className="shrink-0" />
           {errors.global}
         </div>
       )}
 
       {/* Fulfillment Toggle Block */}
       <div className="space-y-3">
-        <label className="text-xs font-semibold tracking-wider uppercase text-muted-foreground">Fulfillment Method</label>
+        <label className="text-xs font-bold tracking-widest uppercase text-muted-foreground ml-1">Fulfillment Method</label>
         <FulfillmentToggle 
           value={form.delivery_type} 
           onChange={(val) => setForm(prev => ({ ...prev, delivery_type: val }))} 
@@ -112,53 +114,50 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess }: Checkou
       </div>
 
       {/* Customer Information Cards */}
-      <div className="space-y-5">
-        <label className="text-xs font-semibold tracking-wider uppercase text-muted-foreground block">Customer Information</label>
+      <div className="space-y-4">
+        <label className="text-xs font-bold tracking-widest uppercase text-muted-foreground ml-1 block">Customer Details</label>
         
-        <div className="space-y-4">
-          {/* Full Name */}
+        <div className="space-y-3">
           <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"><User size={16} /></span>
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"><User size={18} /></span>
             <input
               type="text"
               placeholder="Full Name"
               disabled={isPending}
               value={form.customer_name}
               onChange={(e) => setForm(prev => ({ ...prev, customer_name: e.target.value }))}
-              className={`w-full bg-foreground/[0.02] border focus:bg-background rounded-xl py-3.5 pl-11 pr-4 text-sm outline-none transition-all duration-200 ${
-                errors.customer_name ? 'border-destructive/60 focus:ring-1 focus:ring-destructive/30' : 'border-border/60 focus:ring-1 focus:ring-foreground/20'
+              className={`w-full bg-foreground/[0.02] border focus:bg-background rounded-xl py-3.5 pl-12 pr-4 text-sm outline-none transition-all duration-300 ${
+                errors.customer_name ? 'border-destructive/60 focus:ring-2 focus:ring-destructive/20' : 'border-border/60 focus:ring-2 focus:ring-primary/20'
               }`}
             />
             {errors.customer_name && <p className="text-destructive text-xs mt-1.5 pl-1 font-medium">{errors.customer_name}</p>}
           </div>
 
-          {/* Email Address */}
           <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"><Mail size={16} /></span>
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"><Mail size={18} /></span>
             <input
               type="email"
-              placeholder="Email Address"
+              placeholder="Email Address (For receipts)"
               disabled={isPending}
               value={form.customer_email}
               onChange={(e) => setForm(prev => ({ ...prev, customer_email: e.target.value }))}
-              className={`w-full bg-foreground/[0.02] border focus:bg-background rounded-xl py-3.5 pl-11 pr-4 text-sm outline-none transition-all duration-200 ${
-                errors.customer_email ? 'border-destructive/60 focus:ring-1 focus:ring-destructive/30' : 'border-border/60 focus:ring-1 focus:ring-foreground/20'
+              className={`w-full bg-foreground/[0.02] border focus:bg-background rounded-xl py-3.5 pl-12 pr-4 text-sm outline-none transition-all duration-300 ${
+                errors.customer_email ? 'border-destructive/60 focus:ring-2 focus:ring-destructive/20' : 'border-border/60 focus:ring-2 focus:ring-primary/20'
               }`}
             />
             {errors.customer_email && <p className="text-destructive text-xs mt-1.5 pl-1 font-medium">{errors.customer_email}</p>}
           </div>
 
-          {/* M-Pesa Number Input */}
           <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"><Phone size={16} /></span>
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"><Phone size={18} /></span>
             <input
               type="text"
               placeholder="M-Pesa Phone Number (e.g., 0712345678)"
               disabled={isPending}
               value={form.customer_phone}
               onChange={(e) => setForm(prev => ({ ...prev, customer_phone: e.target.value }))}
-              className={`w-full bg-foreground/[0.02] border focus:bg-background rounded-xl py-3.5 pl-11 pr-4 text-sm outline-none transition-all duration-200 ${
-                errors.customer_phone ? 'border-destructive/60 focus:ring-1 focus:ring-destructive/30' : 'border-border/60 focus:ring-1 focus:ring-foreground/20'
+              className={`w-full bg-foreground/[0.02] border focus:bg-background rounded-xl py-3.5 pl-12 pr-4 text-sm outline-none transition-all duration-300 ${
+                errors.customer_phone ? 'border-destructive/60 focus:ring-2 focus:ring-destructive/20' : 'border-border/60 focus:ring-2 focus:ring-primary/20'
               }`}
             />
             {errors.customer_phone && <p className="text-destructive text-xs mt-1.5 pl-1 font-medium">{errors.customer_phone}</p>}
@@ -166,55 +165,28 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess }: Checkou
         </div>
       </div>
 
-      {/* Delivery Addressing Module (Conditionally Controlled Animation) */}
+      {/* The Extracted Delivery & Map Module */}
       {form.delivery_type === 'delivery' && (
-        <div className="space-y-4 animate-in fade-in slide-in-from-top-3 duration-300">
-          <label className="text-xs font-semibold tracking-wider uppercase text-muted-foreground block">Delivery Address</label>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="relative md:col-span-2">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"><MapPin size={16} /></span>
-              <input
-                type="text"
-                placeholder="Street / Route Description"
-                disabled={isPending}
-                value={form.street}
-                onChange={(e) => setForm(prev => ({ ...prev, street: e.target.value }))}
-                className={`w-full bg-foreground/[0.02] border focus:bg-background rounded-xl py-3.5 pl-11 pr-4 text-sm outline-none transition-all duration-200 ${
-                  errors.street ? 'border-destructive/60 focus:ring-1 focus:ring-destructive/30' : 'border-border/60 focus:ring-1 focus:ring-foreground/20'
-                }`}
-              />
-              {errors.street && <p className="text-destructive text-xs mt-1.5 pl-1 font-medium">{errors.street}</p>}
-            </div>
-
-            <input
-              type="text"
-              placeholder="Apartment, Building, Suite (Optional)"
-              disabled={isPending}
-              value={form.building}
-              onChange={(e) => setForm(prev => ({ ...prev, building: e.target.value }))}
-              className="w-full bg-foreground/[0.02] border border-border/60 focus:bg-background rounded-xl py-3.5 px-4 text-sm outline-none transition-all duration-200 focus:ring-1 focus:ring-foreground/20"
-            />
-
-            <input
-              type="text"
-              placeholder="City / Region"
-              disabled={isPending}
-              value={form.city}
-              onChange={(e) => setForm(prev => ({ ...prev, city: e.target.value }))}
-              className="w-full bg-foreground/[0.02] border border-border/60 focus:bg-background rounded-xl py-3.5 px-4 text-sm outline-none transition-all duration-200 focus:ring-1 focus:ring-foreground/20"
-            />
-          </div>
-        </div>
+        <DeliveryAddressForm 
+          form={form}
+          setForm={setForm}
+          errors={errors}
+          isPending={isPending}
+          isAddressVerified={isAddressVerified}
+          setIsAddressVerified={setIsAddressVerified}
+        />
       )}
 
       {/* Pickup Information Panel */}
       {form.delivery_type === 'pickup' && (
-        <div className="p-4 bg-foreground/[0.02] border border-border/40 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="flex gap-3">
-            <MapPin className="text-muted-foreground shrink-0 mt-0.5" size={18} />
+        <div className="p-5 bg-foreground/[0.02] border border-border/40 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300 shadow-inner">
+          <div className="flex gap-4">
+            <div className="p-2.5 bg-background rounded-full border border-border/50 shadow-sm h-fit">
+              <MapPin className="text-foreground shrink-0" size={20} />
+            </div>
             <div>
-              <h4 className="text-sm font-semibold text-foreground">Kilimani Flagship Studio Pick-Up</h4>
-              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              <h4 className="text-sm font-bold text-foreground">Kilimani Flagship Studio Pick-Up</h4>
+              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
                 Galana Road, Nairobi. Ready for pickup within 2 hours of payment confirmation. We will call you immediately your package is compiled.
               </p>
             </div>
@@ -226,16 +198,16 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess }: Checkou
       <button
         type="submit"
         disabled={isPending || cartItems.length === 0}
-        className="w-full bg-foreground text-background font-semibold py-4 px-6 rounded-xl text-sm transition-all duration-300 hover:opacity-90 active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md shadow-foreground/5"
+        className="w-full bg-primary text-primary-foreground font-bold py-4 px-6 rounded-xl text-sm transition-all duration-300 hover:opacity-90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(var(--primary),0.25)]"
       >
         {isPending ? (
           <>
-            <Loader2 size={16} className="animate-spin" />
-            <span>Securing Stock...</span>
+            <Loader2 size={18} className="animate-spin" />
+            <span>Securing Encryption...</span>
           </>
         ) : (
           <>
-            <CreditCard size={16} />
+            <CreditCard size={18} />
             <span>Authorize STK Push payment</span>
           </>
         )}
