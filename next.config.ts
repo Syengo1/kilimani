@@ -1,13 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+
+  allowedDevOrigins: [
+    '192.168.100.22', 
+    '192.168.100.22:3000'
+  ],
+  
   // 1. Core Build & Security Settings
   reactStrictMode: true,
-  poweredByHeader: false, // Removes 'X-Powered-By: Next.js' for security
-  compress: true, // Enables gzip compression for better network transfer
-
-  // Development network access
-  allowedDevOrigins: ['192.168.100.22'],
+  poweredByHeader: false, // Removes 'X-Powered-By: Next.js' to prevent framework targeting
+  compress: true, // Enables gzip/brotli compression for better network transfer
 
   // 2. Enterprise Image Optimization
   images: {
@@ -16,7 +19,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "jnnaphuofzydrbqmvvgk.supabase.co",
+        hostname: "jnnaphuofzydrbqmvvgk.supabase.co", // Supabase Storage
         port: "",
         pathname: "/storage/v1/object/public/**",
       },
@@ -52,12 +55,17 @@ const nextConfig: NextConfig = {
             value: 'DENY' // Prevents clickjacking by blocking iframe embedding of the site
           },
           {
+            key: 'X-XSS-Protection',
+            value: '1; mode=block' // Protects against legacy Cross-Site Scripting attacks
+          },
+          {
             key: 'Referrer-Policy',
             value: 'strict-origin-when-cross-origin'
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()' // Locks down unused browser APIs
+            // THE FIX: geolocation=(self) allows the DeliveryAddressForm to access GPS securely
+            value: 'camera=(), microphone=(), geolocation=(self), interest-cohort=()' 
           }
         ]
       }
@@ -71,4 +79,4 @@ const nextConfig: NextConfig = {
   }
 };
 
-export default nextConfig;
+export default nextConfig; 
