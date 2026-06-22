@@ -1,5 +1,3 @@
-import { CartProvider } from '@/components/storefront/cart/CartContext';
-
 export const metadata = {
   title: 'Secure Checkout | Kilimani Hair',
   description: 'Complete your purchase securely.',
@@ -11,11 +9,10 @@ export default function CheckoutLayout({
   children: React.ReactNode;
 }) {
   return (
-    // We provide a fresh Cart instance here. 
-    // Because of our elite cross-tab sync engine, it will instantly 
-    // grab the items from localStorage and hydrate the checkout page perfectly!
-    <CartProvider>
+    // Because we upgraded to Zustand, the cart state automatically hydrates globally.
+    // No context providers are needed here anymore!
+    <>
       {children}
-    </CartProvider>
+    </>
   );
 }

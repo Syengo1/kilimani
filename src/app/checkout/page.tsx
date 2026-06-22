@@ -15,6 +15,9 @@ export default function CheckoutPage() {
   const { items, isHydrated } = useCart();
   
   const [activeOrderRef, setActiveOrderRef] = useState<string | null>(null);
+  
+  // 1. NEW STATE: Holds the real-time shipping cost from the child component
+  const [deliveryFee, setDeliveryFee] = useState<number>(0);
 
   useEffect(() => {
     if (isHydrated && items.length === 0 && !activeOrderRef) {
@@ -40,6 +43,9 @@ export default function CheckoutPage() {
   if (items.length === 0 && !activeOrderRef) return null;
 
   const subtotal = items.reduce((total, item) => total + (item.price * item.quantity), 0);
+  
+  // 2. NEW MATH: Calculate the Grand Total dynamically
+  const grandTotal = subtotal + deliveryFee;
   
   const cartPayload: CheckoutCartItem[] = items.map(item => ({
     variant_id: item.variantId,
@@ -95,6 +101,8 @@ export default function CheckoutPage() {
             <CheckoutForm 
               cartItems={cartPayload} 
               subtotal={subtotal}
+              // 3. THE UPLINK: Catch the fee from the child component
+              onDeliveryFeeCalculated={setDeliveryFee}
               onSuccess={(orderRef) => setActiveOrderRef(orderRef)} 
             />
             
@@ -157,7 +165,10 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex justify-between text-sm text-muted-foreground font-medium">
                   <span>Shipping</span>
-                  <span className="text-foreground italic">Calculated by the system</span>
+                  {/* 4. DYNAMIC SHIPPING UX */}
+                  <span className={`transition-colors duration-300 ${deliveryFee === 0 ? 'text-emerald-500' : 'text-foreground'}`}>
+                    {deliveryFee === 0 ? 'TBD / Free' : formatKES(deliveryFee)}
+                  </span>
                 </div>
               </div>
 
@@ -167,8 +178,9 @@ export default function CheckoutPage() {
                   <span className="text-[10px] font-bold text-muted-foreground block mb-1 uppercase tracking-widest">
                     Incl. Taxes
                   </span>
-                  <span className="text-3xl md:text-4xl font-serif font-bold text-primary tracking-tight">
-                    {formatKES(subtotal)}
+                  {/* 5. DYNAMIC GRAND TOTAL */}
+                  <span className="text-3xl md:text-4xl font-serif font-bold text-primary tracking-tight transition-all duration-300">
+                    {formatKES(grandTotal)}
                   </span>
                 </div>
               </div>

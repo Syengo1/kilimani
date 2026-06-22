@@ -1,19 +1,21 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useState, useTransition, useEffect } from 'react';
 import { processSecureCheckout, CheckoutCartItem } from '@/app/actions/checkout';
 import { CheckoutFormState, FormErrors } from '@/types/checkout';
 import FulfillmentToggle from './FulfillmentToggle';
-import DeliveryAddressForm from './DeliveryAddressForm'; // <-- The new module
+import DeliveryAddressForm from './DeliveryAddressForm';
 import { MapPin, Phone, Mail, User, CreditCard, Loader2 } from 'lucide-react';
+import { calculateDistance, calculateDeliveryFee } from '@/lib/checkout/haversine'; // <-- The Math Engine
 
 interface CheckoutFormProps {
   cartItems: CheckoutCartItem[];
   subtotal: number;
   onSuccess: (orderRef: string) => void;
+  onDeliveryFeeCalculated: (fee: number) => void; // <-- The Uplink to the Parent Page
 }
 
-export default function CheckoutForm({ cartItems, subtotal, onSuccess }: CheckoutFormProps) {
+export default function CheckoutForm({ cartItems, subtotal, onSuccess, onDeliveryFeeCalculated }: CheckoutFormProps) {
   const [isPending, startTransition] = useTransition();
   const [errors, setErrors] = useState<FormErrors>({});
   const [isAddressVerified, setIsAddressVerified] = useState(false);
@@ -30,6 +32,26 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess }: Checkou
     latitude: 0,
     longitude: 0,
   });
+
+  // =======================================================================
+  // REAL-TIME LOGISTICS CALCULATOR
+  // Instantly calculates the fee when the GPS pin drops and passes it up.
+  // =======================================================================
+  useEffect(() => {
+    let fee = 0;
+    
+    if (form.delivery_type === 'pickup') {
+      fee = 0;
+    } else if (form.delivery_type === 'delivery' && form.latitude && form.longitude && isAddressVerified) {
+      // Calculate strict mathematical distance
+      const distance = calculateDistance(form.latitude, form.longitude);
+      // Guarantee a clean integer for Safaricom compatibility
+      fee = Math.round(calculateDeliveryFee(distance));
+    }
+    
+    // Shoot the calculated fee to the Order Summary on the parent page
+    onDeliveryFeeCalculated(fee);
+  }, [form.delivery_type, form.latitude, form.longitude, isAddressVerified, onDeliveryFeeCalculated]);
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
@@ -98,7 +120,7 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess }: Checkou
   return (
     <form onSubmit={handleSubmit} className="space-y-8 max-w-xl mx-auto w-full">
       {errors.global && (
-        <div className="p-4 bg-destructive/10 border border-destructive/20 text-destructive text-xs font-medium rounded-xl flex items-center gap-2">
+        <div className="p-4 bg-destructive/10 border border-destructive/20 text-destructive text-xs font-medium rounded-xl flex items-center gap-2 animate-in fade-in">
           <Loader2 size={16} className="shrink-0" />
           {errors.global}
         </div>
