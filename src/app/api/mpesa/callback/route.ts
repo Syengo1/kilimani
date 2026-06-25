@@ -7,83 +7,97 @@ interface MpesaCallbackItem {
   Value?: string | number;
 }
 
-// WARNING: Use the Service Role Key here to bypass RLS, because this request comes from Safaricom.
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! 
-);
-
+/**
+ * ENTERPRISE M-PESA WEBHOOK RECEIVER
+ * Processes asynchronous payment results from Safaricom Daraja.
+ */
 export async function POST(request: Request) {
   try {
     const data = await request.json();
-    const stkCallback = data.Body?.stkCallback;
+    const stkCallback = data?.Body?.stkCallback;
 
-    if (!stkCallback) {
+    // 1. SECURITY PRE-FLIGHT: Reject malformed payloads instantly
+    if (!stkCallback || !stkCallback.CheckoutRequestID) {
+      console.error('[M-Pesa Webhook] Invalid Payload structure detected.', data);
       return NextResponse.json({ error: 'Invalid Payload' }, { status: 400 });
     }
 
     const checkoutRequestId = stkCallback.CheckoutRequestID as string;
     const resultCode = stkCallback.ResultCode as number;
 
-    // ResultCode 0 means the customer entered their PIN and the payment was successful
+    // 2. PRIVILEGED DATABASE ACCESS 
+    // Webhooks operate outside user sessions; Service Role Key is required to bypass RLS.
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
     if (resultCode === 0 && stkCallback.CallbackMetadata?.Item) {
-      // 2. APPLY TYPES: Cast the array to our strictly defined interface
+      // ====================================================================
+      // SCENARIO A: SUCCESSFUL PAYMENT
+      // ====================================================================
       const callbackItems: MpesaCallbackItem[] = stkCallback.CallbackMetadata.Item;
       
-      // ESLINT FIXED: Safely extract values without using 'any'
-      const receiptObj = callbackItems.find((item: MpesaCallbackItem) => item.Name === 'MpesaReceiptNumber');
-      const amountObj = callbackItems.find((item: MpesaCallbackItem) => item.Name === 'Amount');
-      
-      const mpesaReceipt = receiptObj?.Value as string | undefined;
-      const amountPaid = amountObj?.Value as number | undefined;
+      const mpesaReceipt = callbackItems.find(item => item.Name === 'MpesaReceiptNumber')?.Value as string | undefined;
+      const amountPaid = callbackItems.find(item => item.Name === 'Amount')?.Value as number | undefined;
 
-      // UPDATE THE DATABASE: Mark as paid and attach the receipt!
-      const { error } = await supabase
+      if (!mpesaReceipt) {
+        console.warn(`[M-Pesa Webhook] Warning: Success payload missing receipt string for ${checkoutRequestId}`);
+      }
+
+      // 3. IDEMPOTENT DATABASE UPDATE
+      // We strictly append `.eq('status', 'pending_payment')`. 
+      // If Daraja accidentally sends duplicate webhooks, the second one will harmlessly affect 0 rows.
+      const { error } = await supabaseAdmin
         .from('orders')
         .update({
           status: 'paid',
           mpesa_receipt: mpesaReceipt,
           updated_at: new Date().toISOString()
         })
-        .eq('mpesa_checkout_id', checkoutRequestId); // We find the order using the Safaricom ID!
+        .eq('mpesa_checkout_id', checkoutRequestId)
+        .eq('status', 'pending_payment');
 
       if (error) {
-        console.error('Database Update Failed during Webhook:', error);
-        return NextResponse.json({ error: 'Database update failed' }, { status: 500 });
+        // We log the critical error to your server logs, but DO NOT return 500 to Safaricom.
+        // Returning 500 causes Daraja to aggressively retry and potentially DDoS the database.
+        console.error(`[M-Pesa Webhook] CRITICAL DB Update Failed for ${checkoutRequestId}:`, error);
+      } else {
+        console.log(`[M-Pesa Webhook] Payment Success! Order ${checkoutRequestId} paid KES ${amountPaid}. Receipt: ${mpesaReceipt}`);
       }
 
-      console.log(`Payment Success! Order matching ${checkoutRequestId} paid KES ${amountPaid}. Receipt: ${mpesaReceipt}`);
-    
     } else {
-      // ResultCode !== 0 means the user cancelled, timed out, or had insufficient funds.
-      console.log(`Payment Failed for ${checkoutRequestId}. Reason: ${stkCallback.ResultDesc}`);
+      // ====================================================================
+      // SCENARIO B: FAILED PAYMENT (Cancelled, Timeout, Insufficient Funds)
+      // ====================================================================
+      console.warn(`[M-Pesa Webhook] Payment Failed for ${checkoutRequestId}. Reason: ${stkCallback.ResultDesc}`);
       
-      // TRIGGER THE FLAWLESS RESTOCK ENGINE
-      // This securely cancels the order AND restores the exact inventory quantities in one unbreakable database transaction.
-      const { error } = await supabase.rpc('cancel_and_restock_order', {
+      // 4. THE RESTOCK ENGINE
+      // Automatically triggers the PostgreSQL RPC to return locked inventory to the storefront
+      const { error } = await supabaseAdmin.rpc('cancel_and_restock_order', {
         p_mpesa_checkout_id: checkoutRequestId
       });
 
       if (error) {
-        console.error('Flawless Restock Engine Failed:', error);
-        // We log the error but still return a 200 OK to Safaricom so they stop retrying
+        console.error(`[M-Pesa Webhook] CRITICAL Flawless Restock Engine Failed for ${checkoutRequestId}:`, error);
       } else {
-        console.log(`Inventory successfully restored for Checkout ID: ${checkoutRequestId}`);
+        console.log(`[M-Pesa Webhook] Inventory successfully restored for Checkout ID: ${checkoutRequestId}`);
       }
     }
 
-    // 3. SAFARICOM STANDARD: Daraja expects this exact key-value response to stop retrying
+    // 5. SAFARICOM STANDARD RESPONSE
+    // Daraja requires a 200 OK with this exact JSON structure to close the connection and stop retrying.
     return NextResponse.json({ 
       ResultCode: 0, 
-      ResultDesc: "Success" 
-    });
+      ResultDesc: "Accepted" 
+    }, { status: 200 });
 
   } catch (error) {
-    console.error('Webhook Error:', error);
-    // Even on server crashes, returning a Safaricom-formatted error is safer
+    console.error('[M-Pesa Webhook] Fatal Server Error:', error);
+    // Even during a catastrophic server crash, we tell Daraja we received it so they drop their retry queue.
     return NextResponse.json({ 
-      ResultCode: 1, 
-      ResultDesc: "Internal Server Error" 
-    }, { status: 500 });
+      ResultCode: 0, 
+      ResultDesc: "Accepted with internal errors" 
+    }, { status: 200 });
   }
 }

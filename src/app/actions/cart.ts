@@ -2,57 +2,96 @@
 
 import { createClient } from '@/lib/supabase/server';
 
+// ============================================================================
+// 1. STRICT TYPE DEFINITIONS
+// Ensures the frontend CartContext and backend validation speak the exact same language.
+// ============================================================================
+
+export interface CartValidationPayload {
+  variantId: string;
+  price: number;
+  quantity: number;
+}
+
 export interface CartValidationResult {
   variantId: string;
   isValid: boolean;
-  livePrice: number;
-  liveStock: number;
-  error?: 'PRICE_CHANGED' | 'OUT_OF_STOCK' | 'INSUFFICIENT_STOCK' | 'NOT_FOUND';
+  error?: 'OUT_OF_STOCK' | 'PRICE_CHANGED' | 'INSUFFICIENT_STOCK';
+  liveStock?: number;
+  livePrice?: number;
+  liveOriginalPrice?: number; 
 }
 
-export async function validateCartItems(
-  cartItems: { variantId: string; price: number; quantity: number }[]
-): Promise<CartValidationResult[]> {
-  if (!cartItems.length) return [];
+// ============================================================================
+// 2. ENTERPRISE VALIDATION ENGINE
+// ============================================================================
+
+/**
+ * Validates the user's cart against live database metrics before allowing checkout.
+ * Defends against race conditions, expired flash sales, and frontend price manipulation.
+ */
+export async function validateCartItems(items: CartValidationPayload[]): Promise<CartValidationResult[]> {
+  // 1. Quick exit if the cart is empty to save database reads
+  if (!items || items.length === 0) return [];
 
   const supabase = await createClient();
-  const variantIds = cartItems.map((item) => item.variantId);
+  const variantIds = items.map(i => i.variantId);
 
-  // Fetch the absolute live truth from the database
-  const { data: liveVariants, error } = await supabase
+  // 2. FETCH LIVE METRICS
+  // We only pull the absolute minimum data required for financial and inventory validation
+  const { data: variants, error } = await supabase
     .from('product_variants')
-    .select('id, price_kes, stock_quantity, is_active')
+    .select('id, stock_quantity, price_kes, discount_price_kes')
     .in('id', variantIds);
 
-  if (error || !liveVariants) {
-    console.error('Cart validation error:', error);
-    throw new Error('Failed to validate cart data.');
+  // 3. DATABASE FAIL-SAFE
+  // If the database connection drops, we gracefully lock down the cart to prevent overselling
+  if (error || !variants) {
+    console.error('Cart Validation Database Interception:', error);
+    return items.map(i => ({ variantId: i.variantId, isValid: false, error: 'OUT_OF_STOCK' }));
   }
 
-  return cartItems.map((item) => {
-    const liveData = liveVariants.find((v) => v.id === item.variantId);
+  // 4. THE VALIDATION MATRIX
+  return items.map(item => {
+    const variant = variants.find(v => v.id === item.variantId);
 
-    // 1. Variant no longer exists or was deactivated
-    if (!liveData || !liveData.is_active) {
-      return { variantId: item.variantId, isValid: false, livePrice: 0, liveStock: 0, error: 'NOT_FOUND' };
+    // SCENARIO A: The SKU was completely deleted from the database by an admin
+    if (!variant) {
+      return { variantId: item.variantId, isValid: false, error: 'OUT_OF_STOCK' };
     }
 
-    // 2. Price Mismatch (Protects your margins)
-    if (liveData.price_kes !== item.price) {
-      return { variantId: item.variantId, isValid: false, livePrice: liveData.price_kes, liveStock: liveData.stock_quantity, error: 'PRICE_CHANGED' };
+    // 5. FINANCIAL COMPUTATION ENGINE
+    // Determine the true active price the customer should be paying right now
+    const livePrice = Number(variant.discount_price_kes || variant.price_kes);
+    // Determine the original price ONLY if a discount is currently active
+    const liveOriginalPrice = variant.discount_price_kes ? Number(variant.price_kes) : undefined;
+
+    // SCENARIO B: Race Condition (Someone else bought the last unit while it was in this user's cart)
+    if (variant.stock_quantity < item.quantity) {
+      return { 
+        variantId: item.variantId, 
+        isValid: false, 
+        error: 'INSUFFICIENT_STOCK',
+        liveStock: variant.stock_quantity,
+        livePrice,
+        liveOriginalPrice
+      };
     }
 
-    // 3. Complete Stockout
-    if (liveData.stock_quantity === 0) {
-      return { variantId: item.variantId, isValid: false, livePrice: liveData.price_kes, liveStock: 0, error: 'OUT_OF_STOCK' };
+    // SCENARIO C: Financial Discrepancy (A flash sale ended, or the user tried to manipulate the React state)
+    if (livePrice !== item.price) {
+      return { 
+        variantId: item.variantId, 
+        isValid: false, 
+        error: 'PRICE_CHANGED',
+        livePrice,
+        liveOriginalPrice,
+        liveStock: variant.stock_quantity
+      };
     }
 
-    // 4. Insufficient Stock (User wants 3, but only 1 is left)
-    if (item.quantity > liveData.stock_quantity) {
-      return { variantId: item.variantId, isValid: false, livePrice: liveData.price_kes, liveStock: liveData.stock_quantity, error: 'INSUFFICIENT_STOCK' };
-    }
-
-    // Everything is perfect
-    return { variantId: item.variantId, isValid: true, livePrice: liveData.price_kes, liveStock: liveData.stock_quantity };
+    // SCENARIO D: Flawless Match
+    // The item is in stock and the pricing is mathematically accurate. Safe to purchase.
+    return { variantId: item.variantId, isValid: true };
   });
 }

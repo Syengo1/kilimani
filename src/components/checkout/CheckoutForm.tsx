@@ -5,17 +5,26 @@ import { processSecureCheckout, CheckoutCartItem } from '@/app/actions/checkout'
 import { CheckoutFormState, FormErrors } from '@/types/checkout';
 import FulfillmentToggle from './FulfillmentToggle';
 import DeliveryAddressForm from './DeliveryAddressForm';
-import { MapPin, Phone, Mail, User, CreditCard, Loader2 } from 'lucide-react';
-import { calculateDistance, calculateDeliveryFee } from '@/lib/checkout/haversine'; // <-- The Math Engine
+import { MapPin, Phone, Mail, User, Loader2 } from 'lucide-react';
+import { calculateDistance, calculateDeliveryFee } from '@/lib/checkout/haversine';
 
 interface CheckoutFormProps {
+  formId?: string; // NEW: Allows the parent to link a detached submit button
   cartItems: CheckoutCartItem[];
   subtotal: number;
   onSuccess: (orderRef: string) => void;
-  onDeliveryFeeCalculated: (fee: number) => void; // <-- The Uplink to the Parent Page
+  onDeliveryFeeCalculated: (fee: number) => void; 
+  onSubmittingChange?: (isSubmitting: boolean) => void; // NEW: Tells the parent when to show the spinner
 }
 
-export default function CheckoutForm({ cartItems, subtotal, onSuccess, onDeliveryFeeCalculated }: CheckoutFormProps) {
+export default function CheckoutForm({ 
+  formId = 'checkout-form', 
+  cartItems, 
+  subtotal, 
+  onSuccess, 
+  onDeliveryFeeCalculated,
+  onSubmittingChange 
+}: CheckoutFormProps) {
   const [isPending, startTransition] = useTransition();
   const [errors, setErrors] = useState<FormErrors>({});
   const [isAddressVerified, setIsAddressVerified] = useState(false);
@@ -33,9 +42,13 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess, onDeliver
     longitude: 0,
   });
 
+  // Sync the pending state to the parent page's detached button
+  useEffect(() => {
+    onSubmittingChange?.(isPending);
+  }, [isPending, onSubmittingChange]);
+
   // =======================================================================
   // REAL-TIME LOGISTICS CALCULATOR
-  // Instantly calculates the fee when the GPS pin drops and passes it up.
   // =======================================================================
   useEffect(() => {
     let fee = 0;
@@ -43,13 +56,10 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess, onDeliver
     if (form.delivery_type === 'pickup') {
       fee = 0;
     } else if (form.delivery_type === 'delivery' && form.latitude && form.longitude && isAddressVerified) {
-      // Calculate strict mathematical distance
       const distance = calculateDistance(form.latitude, form.longitude);
-      // Guarantee a clean integer for Safaricom compatibility
       fee = Math.round(calculateDeliveryFee(distance));
     }
     
-    // Shoot the calculated fee to the Order Summary on the parent page
     onDeliveryFeeCalculated(fee);
   }, [form.delivery_type, form.latitude, form.longitude, isAddressVerified, onDeliveryFeeCalculated]);
 
@@ -118,9 +128,10 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess, onDeliver
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8 max-w-xl mx-auto w-full">
+    // THE FORM ID: This allows the external button on the parent page to trigger this form
+    <form id={formId} onSubmit={handleSubmit} className="space-y-8 max-w-xl mx-auto w-full">
       {errors.global && (
-        <div className="p-4 bg-destructive/10 border border-destructive/20 text-destructive text-xs font-medium rounded-xl flex items-center gap-2 animate-in fade-in">
+        <div className="p-4 bg-destructive/10 border border-destructive/20 text-destructive text-xs font-bold rounded-xl flex items-center gap-2 animate-in fade-in">
           <Loader2 size={16} className="shrink-0" />
           {errors.global}
         </div>
@@ -140,8 +151,8 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess, onDeliver
         <label className="text-xs font-bold tracking-widest uppercase text-muted-foreground ml-1 block">Customer Details</label>
         
         <div className="space-y-3">
-          <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"><User size={18} /></span>
+          <div className="relative group">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors"><User size={18} /></span>
             <input
               type="text"
               placeholder="Full Name"
@@ -149,14 +160,14 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess, onDeliver
               value={form.customer_name}
               onChange={(e) => setForm(prev => ({ ...prev, customer_name: e.target.value }))}
               className={`w-full bg-foreground/[0.02] border focus:bg-background rounded-xl py-3.5 pl-12 pr-4 text-sm outline-none transition-all duration-300 ${
-                errors.customer_name ? 'border-destructive/60 focus:ring-2 focus:ring-destructive/20' : 'border-border/60 focus:ring-2 focus:ring-primary/20'
+                errors.customer_name ? 'border-destructive/60 focus:ring-2 focus:ring-destructive/20' : 'border-border/60 focus:ring-2 focus:ring-primary/20 hover:border-border'
               }`}
             />
-            {errors.customer_name && <p className="text-destructive text-xs mt-1.5 pl-1 font-medium">{errors.customer_name}</p>}
+            {errors.customer_name && <p className="text-destructive text-xs mt-1.5 pl-1 font-bold">{errors.customer_name}</p>}
           </div>
 
-          <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"><Mail size={18} /></span>
+          <div className="relative group">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors"><Mail size={18} /></span>
             <input
               type="email"
               placeholder="Email Address (For receipts)"
@@ -164,14 +175,14 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess, onDeliver
               value={form.customer_email}
               onChange={(e) => setForm(prev => ({ ...prev, customer_email: e.target.value }))}
               className={`w-full bg-foreground/[0.02] border focus:bg-background rounded-xl py-3.5 pl-12 pr-4 text-sm outline-none transition-all duration-300 ${
-                errors.customer_email ? 'border-destructive/60 focus:ring-2 focus:ring-destructive/20' : 'border-border/60 focus:ring-2 focus:ring-primary/20'
+                errors.customer_email ? 'border-destructive/60 focus:ring-2 focus:ring-destructive/20' : 'border-border/60 focus:ring-2 focus:ring-primary/20 hover:border-border'
               }`}
             />
-            {errors.customer_email && <p className="text-destructive text-xs mt-1.5 pl-1 font-medium">{errors.customer_email}</p>}
+            {errors.customer_email && <p className="text-destructive text-xs mt-1.5 pl-1 font-bold">{errors.customer_email}</p>}
           </div>
 
-          <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"><Phone size={18} /></span>
+          <div className="relative group">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors"><Phone size={18} /></span>
             <input
               type="text"
               placeholder="M-Pesa Phone Number (e.g., 0712345678)"
@@ -179,10 +190,10 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess, onDeliver
               value={form.customer_phone}
               onChange={(e) => setForm(prev => ({ ...prev, customer_phone: e.target.value }))}
               className={`w-full bg-foreground/[0.02] border focus:bg-background rounded-xl py-3.5 pl-12 pr-4 text-sm outline-none transition-all duration-300 ${
-                errors.customer_phone ? 'border-destructive/60 focus:ring-2 focus:ring-destructive/20' : 'border-border/60 focus:ring-2 focus:ring-primary/20'
+                errors.customer_phone ? 'border-destructive/60 focus:ring-2 focus:ring-destructive/20' : 'border-border/60 focus:ring-2 focus:ring-primary/20 hover:border-border'
               }`}
             />
-            {errors.customer_phone && <p className="text-destructive text-xs mt-1.5 pl-1 font-medium">{errors.customer_phone}</p>}
+            {errors.customer_phone && <p className="text-destructive text-xs mt-1.5 pl-1 font-bold">{errors.customer_phone}</p>}
           </div>
         </div>
       </div>
@@ -215,25 +226,6 @@ export default function CheckoutForm({ cartItems, subtotal, onSuccess, onDeliver
           </div>
         </div>
       )}
-
-      {/* Submit Order Trigger */}
-      <button
-        type="submit"
-        disabled={isPending || cartItems.length === 0}
-        className="w-full bg-primary text-primary-foreground font-bold py-4 px-6 rounded-xl text-sm transition-all duration-300 hover:opacity-90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(var(--primary),0.25)]"
-      >
-        {isPending ? (
-          <>
-            <Loader2 size={18} className="animate-spin" />
-            <span>Securing Encryption...</span>
-          </>
-        ) : (
-          <>
-            <CreditCard size={18} />
-            <span>Authorize STK Push payment</span>
-          </>
-        )}
-      </button>
     </form>
   );
 }

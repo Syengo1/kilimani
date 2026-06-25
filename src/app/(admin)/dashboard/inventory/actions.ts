@@ -1,313 +1,420 @@
-"use server"
+'use server';
 
-import { createClient } from '@/lib/supabase/server'
-import { revalidatePath } from 'next/cache'
+import { createClient } from '@/lib/supabase/server';
+import { revalidatePath } from 'next/cache';
 
-// --- STRICT TYPES FOR ROBUSTNESS ---
+// ============================================================================
+// 1. STRICT TYPE DEFINITIONS
+// Ensures the entire data pipeline remains bulletproof from Client to DB.
+// ============================================================================
+
+export type ProductType = 'hair' | 'accessory' | 'haircare';
+
 export interface BaseProductPayload {
-  title: string;
+  product_type: ProductType;
   category_id: string;
   collection_id: string | null;
-  base_attributes: Record<string, any>;
+  description: string;
+  base_attributes?: Record<string, unknown>;
 }
 
 export interface VariantPayload {
-  id?: string; // 🚨 NEW: Optional. If it has an ID, we update. If not, we insert.
+  id?: string; // Only present during an Update mutation
   sku: string;
   stock_quantity: number;
   cost_price_kes: number;
   price_kes: number;
-  attributes: Record<string, any>;
+  discount_price_kes: number | null;
+  attributes: Record<string, string>;
 }
 
-// --- UTILITY: Extract Storage Path from Public URL ---
-// Supabase needs the exact path (e.g. "inventory/123.jpg") to delete a file.
-function extractStoragePath(publicUrl: string) {
-  const bucketMarker = 'product-media/'
-  const startIndex = publicUrl.indexOf(bucketMarker)
-  if (startIndex === -1) return null
-  return publicUrl.substring(startIndex + bucketMarker.length)
+// ============================================================================
+// 2. READ ENGINES (FETCHERS)
+// ============================================================================
+
+/**
+ * Fetches the baseline taxonomy (Categories & Collections) for form bindings.
+ */
+export async function getTaxonomy() {
+  const supabase = await createClient();
+
+  const [categoriesRes, collectionsRes] = await Promise.all([
+    supabase.from('categories').select('id, name').order('name', { ascending: true }),
+    supabase.from('collections').select('id, name').order('name', { ascending: true })
+  ]);
+
+  return {
+    categories: categoriesRes.data || [],
+    collections: collectionsRes.data || []
+  };
 }
 
-// ==========================================
-// 1. INVENTORY FETCHING
-// ==========================================
-
+/**
+ * MASTER INVENTORY FETCH
+ * Retrieves all products, nested relational data, and bypasses the deleted 'title' column.
+ */
 export async function getInventoryData() {
-  const supabase = await createClient()
-
-  const { data: products, error } = await supabase
+  const supabase = await createClient();
+  
+  const { data, error } = await supabase
     .from('products')
     .select(`
       id,
-      title,
+      product_type,
+      description,
       created_at,
       category:categories(name),
       collection:collections(name),
       product_images(url, display_order),
-      variants:product_variants(id, stock_quantity, price_kes, sku)
+      variants:product_variants(id, stock_quantity, price_kes, sku, discount_price_kes)
     `)
-    .order('created_at', { ascending: false })
+    .order('created_at', { ascending: false });
 
   if (error) {
-    console.error("Inventory Fetch Error:", error.message)
-    return []
+    console.error('Failed to fetch master inventory data:', error);
+    return [];
   }
 
-  return products || []
+  return data;
 }
 
-// 🚨 NEW: Fetch a single product for the Edit Form
+/**
+ * SPECIFIC PRODUCT FETCH
+ * Retrieves a single asset for the Edit Product interface, carefully sorting media.
+ */
 export async function getProductById(id: string) {
-  const supabase = await createClient()
+  const supabase = await createClient();
 
-  const { data: product, error } = await supabase
+  const { data, error } = await supabase
     .from('products')
     .select(`
       id,
-      title,
+      product_type,
+      description,
       category_id,
       collection_id,
       base_attributes,
+      category:categories(name),
+      collection:collections(name),
       product_images(id, url, display_order),
-      variants:product_variants(id, sku, price_kes, cost_price_kes, stock_quantity, variant_attributes)
+      variants:product_variants(id, sku, stock_quantity, price_kes, cost_price_kes, discount_price_kes, variant_attributes)
     `)
     .eq('id', id)
-    .single()
+    .single();
 
   if (error) {
-    console.error("Fetch Product Error:", error.message)
-    return null
+    console.error('Failed to fetch specific product:', error);
+    return null;
   }
 
-  // Ensure images are sorted by their intended display order
-  if (product.product_images) {
-    product.product_images.sort((a, b) => a.display_order - b.display_order)
+  // Guarantee chronological display order of images for the client UI
+  if (data.product_images) {
+    data.product_images.sort((a, b) => a.display_order - b.display_order);
   }
 
-  return product
+  return data;
 }
 
-// ==========================================
-// 2. TAXONOMY MANAGEMENT
-// ==========================================
+// ============================================================================
+// 3. MUTATION ENGINES (WRITE/UPDATE/DELETE)
+// ============================================================================
 
-export async function getTaxonomy() {
-  const supabase = await createClient()
-  
-  const [categories, collections] = await Promise.all([
-    supabase.from('categories').select('id, name').order('name'),
-    supabase.from('collections').select('id, name').order('name')
-  ])
-
-  return {
-    categories: categories.data || [],
-    collections: collections.data || []
-  }
-}
-
-export async function createNewCategory(name: string) {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('categories')
-    .insert({ name: name.trim() })
-    .select('id, name')
-    .single()
-
-  if (error) return { success: false, error: error.message }
-  return { success: true, data }
-}
-
-export async function createNewCollection(name: string) {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('collections')
-    .insert({ name: name.trim() })
-    .select('id, name')
-    .single()
-
-  if (error) return { success: false, error: error.message }
-  return { success: true, data }
-}
-
-// ==========================================
-// 3. MASTER PRODUCT CREATION & UPDATING
-// ==========================================
-
+/**
+ * ENTERPRISE PRODUCT CREATION
+ * Executes a clean multi-table transaction insertion sequence.
+ */
 export async function createFullProduct(
-  productData: BaseProductPayload, 
-  variantsData: VariantPayload[],
-  imageUrls: string[] = []
+  productPayload: BaseProductPayload,
+  variantPayload: VariantPayload[],
+  uploadedImageUrls: string[]
 ) {
-  const supabase = await createClient()
+  const supabase = await createClient();
 
-  const { data: product, error: productError } = await supabase
-    .from('products')
-    .insert({
-      title: productData.title,
-      category_id: productData.category_id,
-      collection_id: productData.collection_id,
-      base_attributes: productData.base_attributes
-    })
-    .select('id')
-    .single()
+  try {
+    // A. Initialize the Product Shell
+    const { data: product, error: productError } = await supabase
+      .from('products')
+      .insert([
+        {
+          product_type: productPayload.product_type,
+          description: productPayload.description,
+          category_id: productPayload.category_id,
+          collection_id: productPayload.collection_id,
+          base_attributes: productPayload.base_attributes || {}
+        }
+      ])
+      .select('id')
+      .single();
 
-  if (productError || !product) {
-    return { success: false, error: "Failed to construct the base product shell." }
-  }
+    if (productError) throw productError;
 
-  const variantsToInsert = variantsData.map(v => ({
-    product_id: product.id,
-    sku: v.sku,
-    price_kes: v.price_kes,
-    cost_price_kes: v.cost_price_kes,
-    stock_quantity: v.stock_quantity,
-    variant_attributes: v.attributes
-  }))
-
-  const { error: variantError } = await supabase.from('product_variants').insert(variantsToInsert)
-
-  if (variantError) {
-    await supabase.from('products').delete().eq('id', product.id)
-    return { success: false, error: "Failed to save SKUs. Product creation was rolled back." }
-  }
-
-  if (imageUrls && imageUrls.length > 0) {
-    const imagesToInsert = imageUrls.map((url, index) => ({
+    // B. Inject Variant Rows tied directly to the Product ID
+    const variantsToInsert = variantPayload.map(v => ({
       product_id: product.id,
-      url: url,
-      display_order: index
-    }))
-    await supabase.from('product_images').insert(imagesToInsert)
-  }
+      sku: v.sku.trim().toUpperCase(), // Enforce clean indexing
+      stock_quantity: v.stock_quantity,
+      cost_price_kes: v.cost_price_kes,
+      price_kes: v.price_kes,
+      discount_price_kes: v.discount_price_kes,
+      variant_attributes: v.attributes
+    }));
 
-  revalidatePath('/dashboard/inventory')
-  return { success: true }
+    const { error: variantError } = await supabase
+      .from('product_variants')
+      .insert(variantsToInsert);
+
+    if (variantError) throw variantError;
+
+    // C. Bind asset management URLs to image catalog
+    if (uploadedImageUrls.length > 0) {
+      const imagesToInsert = uploadedImageUrls.map((url, idx) => ({
+        product_id: product.id,
+        url: url,
+        display_order: idx
+      }));
+
+      const { error: imageError } = await supabase
+        .from('product_images')
+        .insert(imagesToInsert);
+
+      if (imageError) throw imageError;
+    }
+
+    revalidatePath('/dashboard/inventory');
+    return { success: true };
+
+  } catch (error: unknown) {
+    console.error('Core Product Creation Error Pipeline:', error);
+    const message = error instanceof Error ? error.message : 'Unknown database fault.';
+    return { success: false, error: message };
+  }
 }
 
-// 🚨 NEW: The Master Update Action
+/**
+ * ATOMIC PRODUCT UPDATE
+ * Patches the base shell, syncs variant additions/edits, and clears legacy assets.
+ */
 export async function updateFullProduct(
   productId: string,
-  productPayload: BaseProductPayload, 
-  variantsPayload: VariantPayload[],
+  productPayload: BaseProductPayload,
+  variantPayload: VariantPayload[],
   newImageUrls: string[],
   deletedVariantIds: string[],
   deletedImageUrls: string[]
 ) {
-  const supabase = await createClient()
+  const supabase = await createClient();
 
-  // 1. UPDATE Base Product
-  const { error: productUpdateError } = await supabase
-    .from('products')
-    .update({
-      title: productPayload.title,
-      category_id: productPayload.category_id,
-      collection_id: productPayload.collection_id,
-      base_attributes: productPayload.base_attributes
-    })
-    .eq('id', productId)
+  try {
+    // A. Apply changes to Base Product Shell
+    const { error: productUpdateError } = await supabase
+      .from('products')
+      .update({
+        product_type: productPayload.product_type,
+        description: productPayload.description,
+        category_id: productPayload.category_id,
+        collection_id: productPayload.collection_id,
+        base_attributes: productPayload.base_attributes || {}
+      })
+      .eq('id', productId);
 
-  if (productUpdateError) {
-    return { success: false, error: "Failed to update base product details." }
-  }
+    if (productUpdateError) throw productUpdateError;
 
-  // 2. DELETE Removed Variants
-  if (deletedVariantIds.length > 0) {
-    await supabase.from('product_variants').delete().in('id', deletedVariantIds)
-  }
+    // B. Handle Variant Purging Safely
+    if (deletedVariantIds.length > 0) {
+      const { error: variantDeleteError } = await supabase
+        .from('product_variants')
+        .delete()
+        .in('id', deletedVariantIds);
 
-  // 3. UPSERT Current Variants
-  const variantsToUpsert = variantsPayload.map(v => {
-    const payload: any = {
-      product_id: productId,
-      sku: v.sku,
-      price_kes: v.price_kes,
-      cost_price_kes: v.cost_price_kes,
-      stock_quantity: v.stock_quantity,
-      variant_attributes: v.attributes
+      if (variantDeleteError) {
+        // Intercept standard Foreign Key violation if a variant is tied to historical checkouts
+        if (variantDeleteError.code === '23503') {
+          throw new Error('One or more SKUs are linked to historical customer invoices and cannot be deleted. Adjust the stock to 0 instead.');
+        }
+        throw variantDeleteError;
+      }
     }
-    if (v.id) payload.id = v.id // Presence of ID triggers an UPDATE instead of INSERT
-    return payload
-  })
 
-  const { error: variantUpsertError } = await supabase
-    .from('product_variants')
-    .upsert(variantsToUpsert)
+    // C. Synchronize SKU Matrix (Splitting into updates vs. inserts)
+    const inserts: Record<string, unknown>[] = [];
+    const updates: VariantPayload[] = [];
 
-  if (variantUpsertError) {
-    console.error("Variant Upsert Error:", variantUpsertError)
-    return { success: false, error: "Failed to update SKU variants." }
-  }
+    variantPayload.forEach(v => {
+      if (v.id) {
+        updates.push(v);
+      } else {
+        inserts.push({
+          product_id: productId,
+          sku: v.sku.trim().toUpperCase(),
+          stock_quantity: v.stock_quantity,
+          cost_price_kes: v.cost_price_kes,
+          price_kes: v.price_kes,
+          discount_price_kes: v.discount_price_kes,
+          variant_attributes: v.attributes
+        });
+      }
+    });
 
-  // 4. DELETE Removed Images (SQL & Physical Storage)
-  if (deletedImageUrls.length > 0) {
-    // Delete from SQL table
-    await supabase.from('product_images').delete().in('url', deletedImageUrls)
-
-    // Delete physical files from Storage bucket
-    const pathsToDelete = deletedImageUrls
-      .map(extractStoragePath)
-      .filter((path): path is string => path !== null)
-
-    if (pathsToDelete.length > 0) {
-      await supabase.storage.from('product-media').remove(pathsToDelete)
+    if (inserts.length > 0) {
+      const { error: insertErr } = await supabase.from('product_variants').insert(inserts);
+      if (insertErr) throw insertErr;
     }
+
+    // Process updates sequentially to prevent transactional deadlocks
+    for (const updateItem of updates) {
+      const { error: updateErr } = await supabase
+        .from('product_variants')
+        .update({
+          sku: updateItem.sku.trim().toUpperCase(),
+          stock_quantity: updateItem.stock_quantity,
+          cost_price_kes: updateItem.cost_price_kes,
+          price_kes: updateItem.price_kes,
+          discount_price_kes: updateItem.discount_price_kes,
+          variant_attributes: updateItem.attributes
+        })
+        .eq('id', updateItem.id);
+
+      if (updateErr) throw updateErr;
+    }
+
+    // D. Clean Out Remnants from Media Library
+    if (deletedImageUrls.length > 0) {
+      const { error: imgDelError } = await supabase
+        .from('product_images')
+        .delete()
+        .in('url', deletedImageUrls);
+        
+      if (imgDelError) throw imgDelError;
+    }
+
+    // E. Append Newly Generated Media Files
+    if (newImageUrls.length > 0) {
+      // Determine current maximum placement order to append accurately
+      const { data: currentImages } = await supabase
+        .from('product_images')
+        .select('display_order')
+        .eq('product_id', productId);
+        
+      const maxOrder = currentImages && currentImages.length > 0 
+        ? Math.max(...currentImages.map(i => i.display_order)) 
+        : -1;
+
+      const newImagesPayload = newImageUrls.map((url, index) => ({
+        product_id: productId,
+        url: url,
+        display_order: maxOrder + 1 + index
+      }));
+
+      const { error: imgInsError } = await supabase
+        .from('product_images')
+        .insert(newImagesPayload);
+        
+      if (imgInsError) throw imgInsError;
+    }
+
+    revalidatePath('/dashboard/inventory');
+    return { success: true };
+
+  } catch (error: unknown) {
+    console.error('Core Product Update Error Pipeline:', error);
+    const message = error instanceof Error ? error.message : 'Failed to apply matrix transformations.';
+    return { success: false, error: message };
   }
-
-  // 5. INSERT New Images
-  if (newImageUrls.length > 0) {
-    // Determine the highest display_order so we append to the end
-    const { data: existingImages } = await supabase
-      .from('product_images')
-      .select('display_order')
-      .eq('product_id', productId)
-      .order('display_order', { ascending: false })
-      .limit(1)
-
-    const startingOrder = existingImages && existingImages.length > 0 ? existingImages[0].display_order + 1 : 0
-
-    const imagesToInsert = newImageUrls.map((url, index) => ({
-      product_id: productId,
-      url: url,
-      display_order: startingOrder + index
-    }))
-
-    await supabase.from('product_images').insert(imagesToInsert)
-  }
-
-  revalidatePath('/dashboard/inventory')
-  return { success: true }
 }
 
-// 🚨 NEW: The Master Delete Action
-export async function deleteProduct(productId: string) {
-  const supabase = await createClient()
+/**
+ * SYSTEM-SAFE PRODUCT ELIMINATION
+ * Targets a root profile and initiates an atomic layout wipe cascade.
+ */
+export async function deleteProduct(id: string) {
+  const supabase = await createClient();
 
-  // 1. Fetch images so we know what to delete from the Storage Bucket
-  const { data: images } = await supabase
-    .from('product_images')
-    .select('url')
-    .eq('product_id', productId)
+  try {
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', id);
 
-  // 2. Delete the physical files
-  if (images && images.length > 0) {
-    const pathsToDelete = images
-      .map(img => extractStoragePath(img.url))
-      .filter((path): path is string => path !== null)
-
-    if (pathsToDelete.length > 0) {
-      await supabase.storage.from('product-media').remove(pathsToDelete)
+    if (error) {
+      // Gracefully prevent critical data loss for ledger accounting records (Code: 23503 RESTRICT Lock)
+      if (error.code === '23503') {
+        return {
+          success: false,
+          error: 'This catalog record cannot be completely destroyed because items within its structural matrix are already present inside customer checkout files. Please adjust stock to 0 instead.'
+        };
+      }
+      throw error;
     }
-  }
 
-  // 3. Delete the SQL Row
-  // (Because of ON DELETE CASCADE in your schema, this automatically deletes all variants and image records)
-  const { error } = await supabase.from('products').delete().eq('id', productId)
+    revalidatePath('/dashboard/inventory');
+    return { success: true };
+
+  } catch (error: unknown) {
+    console.error('Critical Delete Interception Exception:', error);
+    const message = error instanceof Error ? error.message : 'An unexpected exception locked database resources.';
+    return { success: false, error: message };
+  }
+}
+
+// ============================================================================
+// 4. INLINE TAXONOMY CREATORS
+// ============================================================================
+
+export async function createNewCategory(name: string) {
+  const supabase = await createClient();
+  try {
+    const { data, error } = await supabase.from('categories').insert([{ name: name.trim() }]).select('id, name').single();
+    if (error) throw error;
+    return { success: true, data };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Duplicate taxonomy restriction.';
+    return { success: false, error: message };
+  }
+}
+
+export async function createNewCollection(name: string) {
+  const supabase = await createClient();
+  try {
+    const { data, error } = await supabase.from('collections').insert([{ name: name.trim() }]).select('id, name').single();
+    if (error) throw error;
+    return { success: true, data };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Duplicate taxonomy restriction.';
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * STOREFRONT PUBLIC FETCH ENGINE
+ * Looks up a product exclusively via its secure Reference ID for public routing.
+ */
+export async function getProductByRef(refId: string) {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('products')
+    .select(`
+      id,
+      ref_id,
+      product_type,
+      description,
+      category:categories(name),
+      collection:collections(name),
+      product_images(url, display_order),
+      variants:product_variants(id, sku, stock_quantity, price_kes, discount_price_kes, variant_attributes)
+    `)
+    .eq('ref_id', refId)
+    .single();
 
   if (error) {
-    return { success: false, error: "Failed to delete the product." }
+    console.error(`Failed to fetch product by Ref ID (${refId}):`, error);
+    return null;
   }
 
-  revalidatePath('/dashboard/inventory')
-  return { success: true }
+  // Guarantee chronological display order of images for the client UI
+  if (data.product_images) {
+    data.product_images.sort((a, b) => a.display_order - b.display_order);
+  }
+
+  return data;
 }

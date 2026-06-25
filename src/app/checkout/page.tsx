@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Lock, Loader2, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { ChevronLeft, Lock, Loader2, ShieldCheck, CheckCircle2, Tag, CreditCard } from 'lucide-react';
 import CheckoutForm from '@/components/checkout/CheckoutForm';
 import ProcessingOverlay from '@/components/checkout/ProcessingOverlay';
 import { CheckoutCartItem } from '@/app/actions/checkout';
@@ -15,10 +15,12 @@ export default function CheckoutPage() {
   const { items, isHydrated } = useCart();
   
   const [activeOrderRef, setActiveOrderRef] = useState<string | null>(null);
-  
-  // 1. NEW STATE: Holds the real-time shipping cost from the child component
   const [deliveryFee, setDeliveryFee] = useState<number>(0);
+  
+  // NEW STATE: Tracks if the child form is currently processing the payment
+  const [isCheckoutSubmitting, setIsCheckoutSubmitting] = useState(false);
 
+  // Security Redirect: Bounce users with empty carts safely
   useEffect(() => {
     if (isHydrated && items.length === 0 && !activeOrderRef) {
       router.replace('/?cart=open');
@@ -42,14 +44,25 @@ export default function CheckoutPage() {
 
   if (items.length === 0 && !activeOrderRef) return null;
 
+  // ==========================================
+  // DYNAMIC FINANCIAL & SAVINGS ENGINE
+  // ==========================================
   const subtotal = items.reduce((total, item) => total + (item.price * item.quantity), 0);
   
-  // 2. NEW MATH: Calculate the Grand Total dynamically
+  const totalSavings = items.reduce((total, item) => {
+    if (item.originalPrice && item.originalPrice > item.price) {
+      return total + ((item.originalPrice - item.price) * item.quantity);
+    }
+    return total;
+  }, 0);
+
   const grandTotal = subtotal + deliveryFee;
   
+  // SECURE PAYLOAD: Maps the expected_price so the backend can validate against manipulation
   const cartPayload: CheckoutCartItem[] = items.map(item => ({
     variant_id: item.variantId,
-    quantity: item.quantity
+    quantity: item.quantity,
+    expected_price: item.price
   }));
 
   const formatKES = (amount: number) => `KES ${amount.toLocaleString('en-US')}`;
@@ -58,7 +71,7 @@ export default function CheckoutPage() {
     <div className="min-h-screen bg-background selection:bg-primary/20 pb-24 md:pb-0">
       
       {/* 1. SECURE HEADER */}
-      <header className="border-b border-border/40 bg-background/95 backdrop-blur-xl sticky top-0 z-30 shadow-sm">
+      <header className="border-b border-border/40 bg-background/95 backdrop-blur-xl sticky top-0 z-40 shadow-sm">
         <div className="max-w-[1200px] mx-auto px-4 md:px-8 h-[72px] flex items-center justify-between">
           <Link 
             href="/?cart=open" 
@@ -67,7 +80,7 @@ export default function CheckoutPage() {
             <div className="p-1.5 bg-foreground/[0.03] rounded-full group-hover:bg-foreground/[0.06] transition-colors">
               <ChevronLeft size={16} className="transition-transform group-hover:-translate-x-0.5" />
             </div>
-            <span className="hidden sm:inline">Return to Store</span>
+            <span className="hidden sm:inline">Return to Cart</span>
           </Link>
           
           <div className="flex items-center gap-2 text-foreground font-serif text-xl md:text-2xl font-bold tracking-tight">
@@ -84,40 +97,70 @@ export default function CheckoutPage() {
 
       {/* 2. MAIN LAYOUT GRID */}
       <main className="max-w-[1200px] mx-auto px-4 md:px-8 py-8 md:py-14">
-        <div className="flex flex-col-reverse lg:flex-row gap-12 lg:gap-24 items-start">
+        {/* Mobile: Form top, Summary bottom | Desktop: Form Left, Summary Right */}
+        <div className="flex flex-col lg:flex-row gap-12 lg:gap-16 items-start relative">
           
-          {/* LEFT COLUMN: The Interactive Checkout Form */}
-          <div className="flex-1 w-full lg:max-w-[550px] animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
+          {/* ==========================================
+              LEFT COLUMN: The Interactive Checkout Form 
+              ========================================== */}
+          <div className="flex-1 w-full lg:max-w-[600px] animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out z-10">
             <div className="hidden lg:block mb-10">
               <h1 className="text-3xl lg:text-4xl font-serif text-foreground tracking-tight font-bold">
-                Express Checkout
+                Secure Checkout
               </h1>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3">
-                <CheckCircle2 size={16} className="text-emerald-500" />
+              <div className="flex items-center gap-2 text-sm text-emerald-600/90 font-medium mt-3">
+                <CheckCircle2 size={16} />
                 <p>Transactions are heavily encrypted and secured.</p>
               </div>
             </div>
             
             <CheckoutForm 
+              formId="main-checkout-form"
               cartItems={cartPayload} 
               subtotal={subtotal}
-              // 3. THE UPLINK: Catch the fee from the child component
               onDeliveryFeeCalculated={setDeliveryFee}
+              onSubmittingChange={setIsCheckoutSubmitting} // Connects spinner state
               onSuccess={(orderRef) => setActiveOrderRef(orderRef)} 
             />
-            
-            <div className="mt-12 p-5 border border-border/40 rounded-2xl bg-foreground/[0.01]">
-              <p className="text-[11px] md:text-xs text-muted-foreground/80 text-center leading-relaxed max-w-md mx-auto">
-                By proceeding, you agree to our Terms of Service. 
-                Financial transactions are processed securely via Safaricom Daraja API. 
-                Kilimani Hair does not store your payment credentials.
-              </p>
+
+            {/* --- DESKTOP ONLY: PAYMENT BUTTON & TERMS --- */}
+            {/* Hides completely on mobile, shows directly beneath the form on Desktop */}
+            <div className="hidden lg:block mt-12">
+              <button
+                type="submit"
+                form="main-checkout-form"
+                disabled={isCheckoutSubmitting || items.length === 0}
+                className="w-full bg-primary text-primary-foreground font-bold py-4 px-6 rounded-xl text-sm transition-all duration-300 hover:opacity-90 hover:shadow-xl hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(var(--primary),0.25)]"
+              >
+                {isCheckoutSubmitting ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    <span>Securing Encryption...</span>
+                  </>
+                ) : (
+                  <>
+                    <CreditCard size={18} />
+                    <span>Authorize STK Push payment</span>
+                  </>
+                )}
+              </button>
+              
+              <div className="mt-12 p-5 border border-border/40 rounded-2xl bg-foreground/[0.01]">
+                <p className="text-[11px] md:text-xs text-muted-foreground/80 text-center leading-relaxed max-w-md mx-auto">
+                  By proceeding, you agree to our Terms of Service. 
+                  Financial transactions are processed securely via Safaricom Daraja API. 
+                  Kilimani Hair does not store your payment credentials.
+                </p>
+              </div>
             </div>
+
           </div>
 
-          {/* RIGHT COLUMN: The Sticky Order Summary */}
-          <div className="w-full lg:w-[440px] shrink-0 animate-in fade-in slide-in-from-top-4 duration-700 ease-out">
-            <div className="sticky top-[112px] bg-foreground/[0.015] border border-border/60 rounded-3xl p-6 md:p-8 shadow-2xl shadow-black/5">
+          {/* ==========================================
+              RIGHT COLUMN: The Liquid Sticky Order Summary 
+              ========================================== */}
+          <div className="w-full lg:w-[440px] shrink-0 self-start lg:sticky lg:top-[100px] animate-in fade-in slide-in-from-top-4 duration-700 ease-out z-20">
+            <div className="bg-foreground/[0.015] border border-border/60 rounded-3xl p-6 md:p-8 shadow-2xl shadow-black/5 backdrop-blur-xl">
               <h2 className="text-xl font-bold font-serif text-foreground mb-6 flex items-center justify-between">
                 <span>Order Summary</span>
                 <span className="bg-foreground text-background font-sans text-xs px-3 py-1 rounded-full font-bold">
@@ -126,35 +169,61 @@ export default function CheckoutPage() {
               </h2>
               
               {/* Dynamic Cart Items List */}
-              <div className="space-y-5 mb-8 max-h-[45vh] overflow-y-auto custom-scrollbar pr-2">
-                {items.map((item) => (
-                  <div key={item.variantId} className="flex gap-4 group">
-                    <div className="relative w-20 h-24 bg-stone-100 dark:bg-stone-900 rounded-xl overflow-hidden border border-border/40 shrink-0">
-                      <Image 
-                        src={item.image} 
-                        alt={item.title} 
-                        fill 
-                        sizes="80px"
-                        className="object-cover transition-transform duration-700 group-hover:scale-110"
-                      />
-                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-foreground text-background text-[11px] font-bold flex items-center justify-center rounded-full z-10 border-[3px] border-background shadow-sm">
-                        {item.quantity}
+              <div className="space-y-6 mb-8 max-h-[50vh] overflow-y-auto custom-scrollbar pr-2">
+                {items.map((item) => {
+                  const isOnSale = item.originalPrice && item.originalPrice > item.price;
+                  const discountPercent = isOnSale ? Math.round((1 - (item.price / item.originalPrice!)) * 100) : 0;
+
+                  return (
+                    <div key={item.variantId} className="flex gap-4 group">
+                      
+                      {/* Premium Image Thumbnail with Discount Badge */}
+                      <div className="relative w-20 h-24 bg-stone-100 dark:bg-stone-900 rounded-xl overflow-hidden border border-border/40 shrink-0">
+                        <Image 
+                          src={item.image} 
+                          alt={item.title} 
+                          fill 
+                          sizes="80px"
+                          className="object-cover transition-transform duration-700 group-hover:scale-110"
+                        />
+                        {isOnSale && (
+                          <div className="absolute top-0 left-0 bg-gradient-to-br from-rose-500 to-red-600 text-white text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-br-lg z-10 shadow-sm">
+                            -{discountPercent}%
+                          </div>
+                        )}
+                        <div className="absolute -top-2 -right-2 w-6 h-6 bg-foreground text-background text-[11px] font-bold flex items-center justify-center rounded-full z-10 border-[3px] border-background shadow-sm">
+                          {item.quantity}
+                        </div>
+                      </div>
+                      
+                      {/* Pricing Ledger aligned with Color Theory */}
+                      <div className="flex-1 flex flex-col justify-center">
+                        <h4 className="text-sm font-bold text-foreground line-clamp-2 leading-snug">
+                          {item.title}
+                        </h4>
+                        <div className="flex items-center gap-2 mt-1">
+                          {item.length && (
+                            <span className="text-xs text-muted-foreground font-medium">{item.length}</span>
+                          )}
+                          {item.sku && (
+                            <span className="text-[9px] font-mono text-muted-foreground/60 uppercase border border-border/50 px-1 rounded">{item.sku}</span>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className={`text-sm font-bold tracking-tight ${isOnSale ? 'text-destructive' : 'text-foreground'}`}>
+                            {formatKES(item.price * item.quantity)}
+                          </span>
+                          {isOnSale && (
+                            <span className="text-[11px] text-muted-foreground line-through font-medium">
+                              {formatKES(item.originalPrice! * item.quantity)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    
-                    <div className="flex-1 flex flex-col justify-center">
-                      <h4 className="text-sm font-bold text-foreground line-clamp-2 leading-snug">
-                        {item.title}
-                      </h4>
-                      {item.length && (
-                        <p className="text-xs text-muted-foreground font-medium mt-1">{item.length}</p>
-                      )}
-                      <p className="text-sm font-bold text-foreground mt-2">
-                        {formatKES(item.price * item.quantity)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Financial Ledger */}
@@ -163,25 +232,64 @@ export default function CheckoutPage() {
                   <span>Subtotal</span>
                   <span className="text-foreground">{formatKES(subtotal)}</span>
                 </div>
+                
+                {/* Visual Savings Affirmation */}
+                {totalSavings > 0 && (
+                  <div className="flex items-center justify-between text-sm font-bold text-emerald-600 bg-emerald-500/10 px-3 py-2 rounded-xl border border-emerald-500/20">
+                    <span className="flex items-center gap-1.5"><Tag size={14} /> Total Savings</span>
+                    <span>-{formatKES(totalSavings)}</span>
+                  </div>
+                )}
+
                 <div className="flex justify-between text-sm text-muted-foreground font-medium">
                   <span>Shipping</span>
-                  {/* 4. DYNAMIC SHIPPING UX */}
-                  <span className={`transition-colors duration-300 ${deliveryFee === 0 ? 'text-emerald-500' : 'text-foreground'}`}>
-                    {deliveryFee === 0 ? 'TBD / Free' : formatKES(deliveryFee)}
+                  <span className={`transition-colors duration-300 font-semibold ${deliveryFee === 0 ? 'text-emerald-500' : 'text-foreground'}`}>
+                    {deliveryFee === 0 ? 'Calculated at next step' : formatKES(deliveryFee)}
                   </span>
                 </div>
               </div>
 
-              <div className="border-t border-foreground/10 mt-6 pt-6 flex justify-between items-end">
+              {/* Grand Total Footer */}
+              <div className="border-t border-foreground/10 mt-6 pt-6 flex justify-between items-end mb-2">
                 <span className="text-lg font-bold text-foreground">Total</span>
                 <div className="text-right">
                   <span className="text-[10px] font-bold text-muted-foreground block mb-1 uppercase tracking-widest">
                     Incl. Taxes
                   </span>
-                  {/* 5. DYNAMIC GRAND TOTAL */}
                   <span className="text-3xl md:text-4xl font-serif font-bold text-primary tracking-tight transition-all duration-300">
                     {formatKES(grandTotal)}
                   </span>
+                </div>
+              </div>
+
+              {/* --- MOBILE ONLY: PAYMENT BUTTON & TERMS --- */}
+              {/* Shows up directly under the Grand Total exclusively on mobile screens */}
+              <div className="block lg:hidden mt-8 pt-8 border-t border-border/60">
+                <button
+                  type="submit"
+                  form="main-checkout-form"
+                  disabled={isCheckoutSubmitting || items.length === 0}
+                  className="w-full bg-primary text-primary-foreground font-bold py-4 px-6 rounded-xl text-sm transition-all duration-300 hover:opacity-90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(var(--primary),0.25)]"
+                >
+                  {isCheckoutSubmitting ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Securing Encryption...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard size={18} />
+                      <span>Authorize STK Push payment</span>
+                    </>
+                  )}
+                </button>
+                
+                <div className="mt-12 p-5 border border-border/40 rounded-2xl bg-foreground/[0.01]">
+                  <p className="text-[11px] md:text-xs text-muted-foreground/80 text-center leading-relaxed max-w-md mx-auto">
+                    By proceeding, you agree to our Terms of Service. 
+                    Financial transactions are processed securely via Safaricom Daraja API. 
+                    Kilimani Hair does not store your payment credentials.
+                  </p>
                 </div>
               </div>
 

@@ -8,9 +8,25 @@ import DynamicIslandFilter, { SortOption } from './DynamicIslandFilter';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 
 interface FeaturedCollectionsProps {
-  products: (Product & { category: string })[];
+  // 1. TYPE FIX: Strictly align with the new Product interface
+  products: Product[];
   categories: string[];
 }
+
+// 2. HELPER ENGINES: Compute dynamic fields on the fly
+const getCategoryName = (p: Product) => p.category?.name || 'Exclusive Collection';
+
+const getComputedTitle = (p: Product) => {
+  const cat = p.category?.name || 'Exclusive Collection';
+  const col = p.collection?.name ? `- ${p.collection.name}` : '';
+  return `${cat} ${col}`.trim().replace(/^-/, '').trim();
+};
+
+const getMinPrice = (p: Product) => {
+  if (!p.variants || p.variants.length === 0) return 0;
+  // Accounts for the new discount pricing engine
+  return Math.min(...p.variants.map(v => Number(v.discount_price_kes || v.price_kes)));
+};
 
 export default function FeaturedCollections({ products, categories }: FeaturedCollectionsProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -25,15 +41,19 @@ export default function FeaturedCollections({ products, categories }: FeaturedCo
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      result = result.filter(p => 
-        p.title.toLowerCase().includes(q) || 
-        p.category.toLowerCase().includes(q)
-      );
+      result = result.filter(p => {
+        // 3. SEARCH ENGINE UPGRADE: Safely check computed titles, categories, and Reference IDs
+        const computedTitle = getComputedTitle(p).toLowerCase();
+        const categoryName = getCategoryName(p).toLowerCase();
+        const refId = p.ref_id?.toLowerCase() || '';
+
+        return computedTitle.includes(q) || categoryName.includes(q) || refId.includes(q);
+      });
     }
 
     if (sortOption === 'price-asc' || sortOption === 'price-desc') {
       const minPriceMap = new Map(
-        result.map(p => [p.id, Math.min(...p.variants.map(v => Number(v.price_kes)))])
+        result.map(p => [p.id, getMinPrice(p)])
       );
       
       result.sort((a, b) => {
@@ -46,12 +66,14 @@ export default function FeaturedCollections({ products, categories }: FeaturedCo
     return result;
   }, [products, searchQuery, sortOption]);
 
-  // PERFORMANCE: Group products by category in O(N) time
+  // PERFORMANCE: Group products by category in O(N) time safely
   const categoryGroups = useMemo(() => {
-    const groups: Record<string, typeof products> = {};
+    const groups: Record<string, Product[]> = {};
     processedProducts.forEach(product => {
-      if (!groups[product.category]) groups[product.category] = [];
-      groups[product.category].push(product);
+      // 4. GROUPING FIX: Safely extract the string from the category object
+      const catName = getCategoryName(product);
+      if (!groups[catName]) groups[catName] = [];
+      groups[catName].push(product);
     });
     return groups;
   }, [processedProducts]);

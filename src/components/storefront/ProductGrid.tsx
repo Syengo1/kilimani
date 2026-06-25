@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { LayoutGrid, Rows3 } from 'lucide-react';
+import { LayoutGrid, Rows3, PackageSearch } from 'lucide-react';
 import ProductCard, { Product } from './ProductCard';
 
 interface ProductGridProps {
@@ -10,70 +10,91 @@ interface ProductGridProps {
 }
 
 export default function ProductGrid({ products, title }: ProductGridProps) {
-  // 'compact' = 2 columns on mobile, 4 on desktop
-  // 'standard' = 1 column on mobile, 3 on desktop
+  // 'compact' = High density (Mobile: 2 col, Desktop: 4-5 col)
+  // 'standard' = Luxury breathing room (Mobile: 1 col, Desktop: 3 col)
   const [density, setDensity] = useState<'compact' | 'standard'>('compact');
 
-  if (products.length === 0) return null;
+  // 1. GRACEFUL EMPTY STATE
+  // Instead of silently returning null, we show a premium fallback UI
+  if (!products || products.length === 0) {
+    return (
+      <section className="w-full flex flex-col items-center justify-center py-20 px-4 text-center bg-foreground/[0.02] border border-border/40 rounded-3xl animate-in fade-in duration-500">
+        <div className="w-16 h-16 rounded-full bg-background border border-border flex items-center justify-center mb-5 shadow-sm">
+          <PackageSearch className="text-muted-foreground" size={28} strokeWidth={1.5} />
+        </div>
+        <h3 className="text-xl font-serif font-bold text-foreground tracking-tight">
+          No Products Found
+        </h3>
+        <p className="text-sm text-muted-foreground mt-2 max-w-md leading-relaxed">
+          We couldn&apos;t find any products matching your current criteria. Please adjust your filters or check back later for new arrivals.
+        </p>
+      </section>
+    );
+  }
 
   return (
-    <div className="w-full flex flex-col gap-4 md:gap-6">
+    // 2. SEMANTIC HTML: Using <section> instead of a standard <div>
+    <section className="w-full flex flex-col gap-5 md:gap-8">
       
       {/* Grid Controls Header */}
-      <div className="flex items-end justify-between px-2">
+      <header className="flex items-end justify-between px-1">
         {title && (
-          <h2 className="text-xl md:text-2xl font-serif font-semibold text-foreground">
+          <h2 className="text-2xl md:text-3xl font-serif font-bold text-foreground tracking-tight">
             {title}
           </h2>
         )}
 
-        {/* View Toggles */}
-        <div className="flex items-center gap-1 bg-foreground/5 p-1 rounded-lg border border-border/40 ml-auto">
+        {/* Luxury View Toggles */}
+        <nav className="flex items-center gap-1 bg-foreground/[0.03] p-1.5 rounded-xl border border-border/40 ml-auto shadow-inner">
           <button
             onClick={() => setDensity('standard')}
-            className={`p-1.5 rounded-md transition-all duration-300 ${
+            className={`p-2 rounded-lg transition-all duration-300 ${
               density === 'standard' 
                 ? 'bg-background text-foreground shadow-sm ring-1 ring-border/50' 
                 : 'text-muted-foreground hover:text-foreground'
             }`}
-            aria-label="Standard View"
+            aria-label="Switch to Standard Luxury View"
+            title="Standard View"
           >
-            {/* Rows icon looks like a large single column on mobile */}
-            <Rows3 size={16} strokeWidth={density === 'standard' ? 2 : 1.5} />
+            <Rows3 size={16} strokeWidth={density === 'standard' ? 2.5 : 1.5} />
           </button>
           <button
             onClick={() => setDensity('compact')}
-            className={`p-1.5 rounded-md transition-all duration-300 ${
+            className={`p-2 rounded-lg transition-all duration-300 ${
               density === 'compact' 
                 ? 'bg-background text-foreground shadow-sm ring-1 ring-border/50' 
                 : 'text-muted-foreground hover:text-foreground'
             }`}
-            aria-label="Compact View"
+            aria-label="Switch to Compact Catalogue View"
+            title="Compact View"
           >
-            {/* Grid icon represents the dense multi-column layout */}
-            <LayoutGrid size={16} strokeWidth={density === 'compact' ? 2 : 1.5} />
+            <LayoutGrid size={16} strokeWidth={density === 'compact' ? 2.5 : 1.5} />
           </button>
-        </div>
-      </div>
+        </nav>
+      </header>
 
+      {/* 3. SEMANTIC ACCESSIBILITY: Using <ul role="list"> and <li> */}
       {/* The Dynamic Layout Engine */}
-      <div 
-        className={`grid transition-all duration-500 ease-in-out ${
+      <ul 
+        role="list"
+        className={`grid transition-all duration-700 ease-out ${
           density === 'compact'
-            // COMPACT: 2 col mobile, 3 col tablet, 4-5 col desktop (Tight gaps)
-            ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-3 gap-y-6 md:gap-x-4 md:gap-y-8'
-            // STANDARD: 1 col mobile, 2 col tablet, 3 col desktop (Breathing room)
-            : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-8 md:gap-y-12'
+            // COMPACT: Dense catalogue layout
+            ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-3 gap-y-8 md:gap-x-5 md:gap-y-12'
+            // STANDARD: Premium boutique layout
+            : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-10 md:gap-x-8 md:gap-y-16'
         }`}
       >
         {products.map((product) => (
-          <ProductCard 
-            key={product.id} 
-            product={product} 
-            density={density} 
-          />
+          // 4. LAYOUT HARDENING: 'flex justify-center' ensures cards never stretch awkwardly
+          <li key={product.id} className="flex justify-center w-full">
+            <ProductCard 
+              product={product} 
+              density={density} 
+            />
+          </li>
         ))}
-      </div>
-    </div>
+      </ul>
+    </section>
   );
 }
