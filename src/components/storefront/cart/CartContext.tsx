@@ -8,7 +8,7 @@ export interface CartItem {
   variantId: string;
   productId: string;
   title: string;
-  sku: string; // Added for robust tracking
+  sku: string; // Synchronized for robust tracking
   price: number; // The active selling price (what they actually pay)
   originalPrice?: number; // The non-discounted base price (if on sale)
   quantity: number;
@@ -50,10 +50,18 @@ export const useCart = create<CartStore>()(
       addToCart: (newItem) => set((state) => {
         const existing = state.items.find(i => i.variantId === newItem.variantId);
         if (existing) {
+          // SELF-HEALING ENGINE: If the item exists, increase quantity, but ALSO seamlessly 
+          // update the price/originalPrice to the newest storefront data.
           return {
             items: state.items.map(i => 
               i.variantId === newItem.variantId 
-                ? { ...i, quantity: i.quantity + newItem.quantity } 
+                ? { 
+                    ...i, 
+                    quantity: i.quantity + newItem.quantity,
+                    price: newItem.price,
+                    originalPrice: newItem.originalPrice,
+                    sku: newItem.sku
+                  } 
                 : i
             )
           };
@@ -74,6 +82,7 @@ export const useCart = create<CartStore>()(
         };
       }),
 
+      // SYNCHRONIZED: Now perfectly accepts 3 arguments to handle the Silent Discount Engine
       acceptPriceChanges: (variantId, newPrice, newOriginalPrice) => set((state) => ({
         items: state.items.map(i => i.variantId === variantId 
           ? { 
@@ -122,7 +131,6 @@ export const useCart = create<CartStore>()(
                 staleReason: validation.error as CartItem['staleReason'],
                 liveStock: validation.liveStock,
                 livePrice: validation.livePrice,
-                // Assumes your updated backend validation returns the live original price if it changed
                 liveOriginalPrice: validation.liveOriginalPrice 
               };
             })

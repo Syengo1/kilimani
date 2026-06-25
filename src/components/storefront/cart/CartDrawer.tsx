@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Minus, Plus, Trash2, ShoppingBag, AlertTriangle, RefreshCw, CheckCircle2, Tag } from 'lucide-react';
 import Image from 'next/image';
@@ -38,7 +38,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
   // Shipping Progress Engine
   const shippingProgress = Math.min((subtotal / FREE_SHIPPING_THRESHOLD) * 100, 100);
-  const amountToFreeShipping = FREE_SHIPPING_THRESHOLD - subtotal;
+  const amountToFreeShipping = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal);
   const hasFreeShipping = subtotal >= FREE_SHIPPING_THRESHOLD;
 
   const formatKES = (val: number) => `KES ${val.toLocaleString('en-US')}`;
@@ -53,6 +53,45 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     }
     return () => { document.body.style.overflow = ''; };
   }, [isOpen, validateCart]);
+
+  // ==========================================
+  // SILENT DISCOUNT ENGINE
+  // ==========================================
+  useEffect(() => {
+    const priceDrops = items.filter(
+      item => item.isStale && item.staleReason === 'PRICE_CHANGED' && item.livePrice !== undefined && item.livePrice < item.price
+    );
+    
+    if (priceDrops.length > 0) {
+      priceDrops.forEach(item => {
+        acceptPriceChanges(item.variantId, item.livePrice!, item.liveOriginalPrice);
+      });
+    }
+  }, [items, acceptPriceChanges]);
+
+  // ==========================================
+  // NETWORK-AWARE QUANTITY CONTROLLERS
+  // ==========================================
+  const handleIncrement = useCallback((variantId: string, currentQuantity: number, liveStock?: number) => {
+    if (liveStock !== undefined && currentQuantity >= liveStock) return;
+    updateQuantity(variantId, currentQuantity + 1);
+    validateCart(); // Ping DB to enforce strict inventory limits instantly
+  }, [updateQuantity, validateCart]);
+
+  const handleDecrement = useCallback((variantId: string, currentQuantity: number) => {
+    updateQuantity(variantId, currentQuantity - 1);
+    validateCart();
+  }, [updateQuantity, validateCart]);
+
+  const handleRemove = useCallback((variantId: string) => {
+    removeFromCart(variantId);
+    validateCart();
+  }, [removeFromCart, validateCart]);
+
+  const handleAdjustToStock = useCallback((variantId: string, liveStock: number) => {
+    updateQuantity(variantId, liveStock);
+    validateCart(); // Instantly clears the red error banner after adjusting
+  }, [updateQuantity, validateCart]);
 
   if (!isHydrated) return null;
 
@@ -139,6 +178,9 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     const isOnSale = item.originalPrice && item.originalPrice > item.price;
                     const discountPercent = isOnSale ? Math.round((1 - (item.price / item.originalPrice!)) * 100) : 0;
 
+                    // Securely disables the Plus button if validating OR if the physical stock ceiling is reached
+                    const isPlusDisabled = isValidating || (item.liveStock !== undefined && item.quantity >= item.liveStock);
+
                     return (
                       <div key={item.variantId} className="flex flex-col gap-4 group">
                         
@@ -159,8 +201,9 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                                 {item.title}
                               </h4>
                               <button
-                                onClick={() => removeFromCart(item.variantId)}
-                                className="text-muted-foreground hover:text-destructive transition-colors p-1 -mr-1"
+                                onClick={() => handleRemove(item.variantId)}
+                                disabled={isValidating}
+                                className="text-muted-foreground hover:text-destructive transition-colors p-1 -mr-1 disabled:opacity-50"
                                 aria-label="Remove item"
                               >
                                 <Trash2 size={16} />
@@ -173,18 +216,23 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                             </div>
 
                             <div className="flex items-center justify-between mt-3">
+                              
+                              {/* Network-Aware Item Controls */}
                               <div className="flex items-center border border-border/60 rounded-lg bg-background shadow-sm">
                                 <button
-                                  onClick={() => updateQuantity(item.variantId, item.quantity - 1)}
-                                  className="p-1.5 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 active:bg-foreground/5 rounded-l-lg"
+                                  onClick={() => handleDecrement(item.variantId, item.quantity)}
+                                  disabled={isValidating}
+                                  className="p-1.5 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 active:bg-foreground/5 rounded-l-lg"
                                 >
                                   <Minus size={14} strokeWidth={2.5} />
                                 </button>
-                                <span className="w-7 text-center text-xs font-bold">{item.quantity}</span>
+                                <span className={`w-7 text-center text-xs font-bold transition-opacity duration-200 ${isValidating ? 'opacity-40' : 'opacity-100'}`}>
+                                  {item.quantity}
+                                </span>
                                 <button
-                                  onClick={() => updateQuantity(item.variantId, item.quantity + 1)}
-                                  disabled={item.liveStock !== undefined && item.quantity >= item.liveStock}
-                                  className="p-1.5 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 active:bg-foreground/5 rounded-r-lg"
+                                  onClick={() => handleIncrement(item.variantId, item.quantity, item.liveStock)}
+                                  disabled={isPlusDisabled}
+                                  className="p-1.5 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 active:bg-foreground/5 rounded-r-lg"
                                 >
                                   <Plus size={14} strokeWidth={2.5} />
                                 </button>
@@ -212,7 +260,7 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                               <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                               <span className="text-xs font-medium leading-relaxed">
                                 {item.staleReason === 'OUT_OF_STOCK' && 'This item is no longer available.'}
-                                {item.staleReason === 'PRICE_CHANGED' && `The price changed from ${formatKES(item.price)} to ${formatKES(item.livePrice!)}.`}
+                                {item.staleReason === 'PRICE_CHANGED' && `The price has increased from ${formatKES(item.price)} to ${formatKES(item.livePrice!)}.`}
                                 {item.staleReason === 'INSUFFICIENT_STOCK' && `Only ${item.liveStock} units left in stock.`}
                               </span>
                             </div>
@@ -221,23 +269,26 @@ export default function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                               {item.staleReason === 'PRICE_CHANGED' && (
                                 <button 
                                   onClick={() => acceptPriceChanges(item.variantId, item.livePrice!, item.liveOriginalPrice)}
-                                  className="text-[11px] uppercase tracking-wider font-bold bg-destructive text-destructive-foreground px-4 py-2 rounded-lg hover:opacity-90 active:scale-95 transition-all shadow-sm"
+                                  disabled={isValidating}
+                                  className="text-[11px] uppercase tracking-wider font-bold bg-destructive text-destructive-foreground px-4 py-2 rounded-lg hover:opacity-90 active:scale-95 transition-all shadow-sm disabled:opacity-50"
                                 >
                                   Accept New Price
                                 </button>
                               )}
-                              {item.staleReason === 'INSUFFICIENT_STOCK' && (
+                              {item.staleReason === 'INSUFFICIENT_STOCK' && item.liveStock !== undefined && (
                                 <button 
-                                  onClick={() => updateQuantity(item.variantId, item.liveStock!)}
-                                  className="text-[11px] uppercase tracking-wider font-bold bg-destructive text-destructive-foreground px-4 py-2 rounded-lg hover:opacity-90 active:scale-95 transition-all shadow-sm"
+                                  onClick={() => handleAdjustToStock(item.variantId, item.liveStock!)}
+                                  disabled={isValidating}
+                                  className="text-[11px] uppercase tracking-wider font-bold bg-destructive text-destructive-foreground px-4 py-2 rounded-lg hover:opacity-90 active:scale-95 transition-all shadow-sm disabled:opacity-50"
                                 >
                                   Adjust to {item.liveStock}
                                 </button>
                               )}
                               {(item.staleReason === 'OUT_OF_STOCK' || item.staleReason === 'INSUFFICIENT_STOCK') && (
                                 <button 
-                                  onClick={() => removeFromCart(item.variantId)}
-                                  className="text-[11px] uppercase tracking-wider font-bold border border-destructive/40 text-destructive px-4 py-2 rounded-lg hover:bg-destructive/10 active:scale-95 transition-all"
+                                  onClick={() => handleRemove(item.variantId)}
+                                  disabled={isValidating}
+                                  className="text-[11px] uppercase tracking-wider font-bold border border-destructive/40 text-destructive px-4 py-2 rounded-lg hover:bg-destructive/10 active:scale-95 transition-all disabled:opacity-50"
                                 >
                                   Remove Item
                                 </button>

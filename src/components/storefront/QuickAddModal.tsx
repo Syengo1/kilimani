@@ -1,16 +1,17 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShoppingBag, Check, AlertCircle } from 'lucide-react';
 import Image from 'next/image';
 import { useCart } from './cart/CartContext';
 import { Product, ProductVariant } from './ProductCard';
 
+// FIX 1: Extend the Product type to formally accept the dynamically computed title
 interface QuickAddModalProps {
   isOpen: boolean;
   onClose: () => void;
-  product: Product;
+  product: Product & { title: string }; 
 }
 
 export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModalProps) {
@@ -31,8 +32,10 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
   useEffect(() => {
     if (isOpen && product.variants.length > 0) {
       const timer = setTimeout(() => {
-        // Sort variants by price mathematically safely
-        const sortedVariants = [...product.variants].sort((a, b) => Number(a.price_kes) - Number(b.price_kes));
+        // FIX 2: Sort variants by their true active price (discount or base)
+        const sortedVariants = [...product.variants].sort((a, b) => 
+          Number(a.discount_price_kes || a.price_kes) - Number(b.discount_price_kes || b.price_kes)
+        );
         const firstAvailable = sortedVariants.find((v) => v.stock_quantity > 0) || sortedVariants[0];
         
         setSelectedVariant(firstAvailable);
@@ -57,6 +60,11 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
 
   const primaryImage = [...product.images].sort((a, b) => a.display_order - b.display_order)[0]?.url || '/images/placeholder-hair.jpg';
   const selectedLength = getCleanLength(selectedVariant);
+  
+  // FIX 3: Dynamic Price Computations for the active variant
+  const activePrice = Number(selectedVariant?.discount_price_kes || selectedVariant?.price_kes || 0);
+  const isVariantOnSale = !!selectedVariant?.discount_price_kes;
+  const originalPrice = Number(selectedVariant?.price_kes || 0);
 
   // 3. The Dispatch Engine
   const handleConfirmAdd = async () => {
@@ -67,14 +75,17 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
     // Simulate brief network delay for premium tactical feedback
     await new Promise(resolve => setTimeout(resolve, 500)); 
 
+    // FIX 4: Flawless payload adhering to the strict CartItem schema
     addToCart({
       variantId: selectedVariant.id,
       productId: product.id,
-      // Appends the cleanly formatted size to the cart title for clarity
       title: `${product.title} ${selectedLength ? `(${selectedLength}")` : ''}`.trim(),
-      price: Number(selectedVariant.price_kes), 
+      sku: selectedVariant.sku,
+      price: activePrice, 
+      originalPrice: isVariantOnSale ? originalPrice : undefined,
       quantity: 1,
-      image: primaryImage
+      image: primaryImage,
+      length: selectedLength || undefined
     });
 
     setIsAdding(false);
@@ -130,9 +141,18 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
               </div>
               <div className="flex flex-col justify-center">
                 <h4 className="font-medium text-foreground text-sm tracking-wide leading-snug">{product.title}</h4>
-                <p className="text-primary font-semibold mt-2 text-xl tracking-tight">
-                  KES {Number(selectedVariant?.price_kes || 0).toLocaleString('en-US')}
-                </p>
+                
+                {/* FIX 5: Sale Price UI Mirroring inside the modal */}
+                <div className="flex items-baseline gap-2 mt-2">
+                  <p className={`font-semibold text-xl tracking-tight ${isVariantOnSale ? 'text-destructive' : 'text-primary'}`}>
+                    KES {activePrice.toLocaleString('en-US')}
+                  </p>
+                  {isVariantOnSale && (
+                    <p className="text-muted-foreground line-through text-xs font-medium">
+                      {originalPrice.toLocaleString('en-US')}
+                    </p>
+                  )}
+                </div>
                 
                 {/* Dynamic Scarcity Indicator */}
                 {selectedVariant && selectedVariant.stock_quantity > 0 && selectedVariant.stock_quantity <= 5 && (
