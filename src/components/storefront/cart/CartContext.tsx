@@ -14,6 +14,7 @@ export interface CartItem {
   quantity: number;
   image: string;
   length?: string; 
+  maxStock?: number; // ENTERPRISE: Synchronous local stock ceiling
   
   // Enterprise Stale Data Tracking
   isStale?: boolean;
@@ -49,24 +50,36 @@ export const useCart = create<CartStore>()(
 
       addToCart: (newItem) => set((state) => {
         const existing = state.items.find(i => i.variantId === newItem.variantId);
+        
+        // Ensure we never add negative or zero items maliciously
+        if (newItem.quantity <= 0) return state;
+
         if (existing) {
-          // SELF-HEALING ENGINE: If the item exists, increase quantity, but ALSO seamlessly 
-          // update the price/originalPrice to the newest storefront data.
+          // CLAMP LOGIC: Prevent exceeding physical stock when double-adding
+          const ceiling = existing.liveStock ?? existing.maxStock ?? newItem.maxStock ?? Infinity;
+          const safeQuantity = Math.min(existing.quantity + newItem.quantity, ceiling);
+          
           return {
             items: state.items.map(i => 
               i.variantId === newItem.variantId 
                 ? { 
                     ...i, 
-                    quantity: i.quantity + newItem.quantity,
-                    price: newItem.price,
+                    quantity: safeQuantity,
+                    price: newItem.price, // Self-healing price
                     originalPrice: newItem.originalPrice,
-                    sku: newItem.sku
+                    sku: newItem.sku,
+                    maxStock: newItem.maxStock ?? i.maxStock // Self-healing stock limit
                   } 
                 : i
             )
           };
         }
-        return { items: [...state.items, newItem] };
+
+        // Apply clamping on initial add just in case
+        const initialCeiling = newItem.maxStock ?? Infinity;
+        const safeInitialQuantity = Math.min(newItem.quantity, initialCeiling);
+        
+        return { items: [...state.items, { ...newItem, quantity: safeInitialQuantity }] };
       }),
 
       removeFromCart: (variantId) => set((state) => ({
@@ -74,15 +87,24 @@ export const useCart = create<CartStore>()(
       })),
 
       updateQuantity: (variantId, quantity) => set((state) => {
+        // Safe removal if quantity drops below 1
         if (quantity < 1) {
           return { items: state.items.filter(i => i.variantId !== variantId) };
         }
+        
         return {
-          items: state.items.map(i => i.variantId === variantId ? { ...i, quantity } : i)
+          items: state.items.map(i => {
+            if (i.variantId === variantId) {
+              // SYNCHRONOUS FIREWALL: It is mathematically impossible to exceed stock
+              const ceiling = i.liveStock ?? i.maxStock ?? Infinity;
+              return { ...i, quantity: Math.min(quantity, ceiling) };
+            }
+            return i;
+          })
         };
       }),
 
-      // SYNCHRONIZED: Now perfectly accepts 3 arguments to handle the Silent Discount Engine
+      // SYNCHRONIZED: Perfectly handles the Silent Discount Engine
       acceptPriceChanges: (variantId, newPrice, newOriginalPrice) => set((state) => ({
         items: state.items.map(i => i.variantId === variantId 
           ? { 
@@ -114,17 +136,19 @@ export const useCart = create<CartStore>()(
             items: state.items.map(item => {
               const validation = results.find(r => r.variantId === item.variantId);
               
+              // If validation passed entirely
               if (!validation || validation.isValid) {
                 return { 
                   ...item, 
                   isStale: false, 
                   staleReason: undefined, 
-                  liveStock: validation?.liveStock, 
+                  liveStock: validation?.liveStock ?? item.liveStock, // Captures background inventory updates seamlessly
                   livePrice: undefined,
                   liveOriginalPrice: undefined
                 };
               }
               
+              // If validation caught an issue
               return { 
                 ...item, 
                 isStale: true, 
@@ -136,7 +160,7 @@ export const useCart = create<CartStore>()(
             })
           }));
         } catch (error) {
-          console.error('Validation failed:', error);
+          console.error('Cart validation failed:', error);
         } finally {
           set({ isValidating: false });
         }

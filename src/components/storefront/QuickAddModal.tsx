@@ -14,13 +14,20 @@ interface QuickAddModalProps {
   product: Product & { title: string }; 
 }
 
+// PREMIUM UX: Native device haptics for variant selection and cart additions
+const triggerHaptic = (intensity: 'light' | 'medium' = 'light') => {
+  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+    navigator.vibrate(intensity === 'light' ? 30 : 50);
+  }
+};
+
 export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModalProps) {
   const { addToCart } = useCart();
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // Safely extract and clean the length from the JSONB attribute (e.g., converts '18\"' to '18')
+  // Safely extract and clean the length from the JSONB attribute
   const getCleanLength = (variant: ProductVariant | null) => {
     if (!variant) return null;
     const raw = variant.variant_attributes?.length as string | undefined;
@@ -28,11 +35,13 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
     return raw.replace(/["\\]/g, ''); // Strips out database escape characters
   };
 
+  const formatKES = (val: number) => `KES ${val.toLocaleString('en-US')}`;
+
   // 1. Initial State Setup & Mathematical Sorting
   useEffect(() => {
     if (isOpen && product.variants.length > 0) {
       const timer = setTimeout(() => {
-        // FIX 2: Sort variants by their true active price (discount or base)
+        // Sort variants by their true active price (discount or base)
         const sortedVariants = [...product.variants].sort((a, b) => 
           Number(a.discount_price_kes || a.price_kes) - Number(b.discount_price_kes || b.price_kes)
         );
@@ -61,21 +70,22 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
   const primaryImage = [...product.images].sort((a, b) => a.display_order - b.display_order)[0]?.url || '/images/placeholder-hair.jpg';
   const selectedLength = getCleanLength(selectedVariant);
   
-  // FIX 3: Dynamic Price Computations for the active variant
+  // 3. Dynamic Price Computations for the active variant
   const activePrice = Number(selectedVariant?.discount_price_kes || selectedVariant?.price_kes || 0);
   const isVariantOnSale = !!selectedVariant?.discount_price_kes;
   const originalPrice = Number(selectedVariant?.price_kes || 0);
 
-  // 3. The Dispatch Engine
+  // 4. The Dispatch Engine
   const handleConfirmAdd = async () => {
     if (!selectedVariant || selectedVariant.stock_quantity === 0) return;
     
+    triggerHaptic('medium');
     setIsAdding(true);
     
     // Simulate brief network delay for premium tactical feedback
-    await new Promise(resolve => setTimeout(resolve, 500)); 
+    await new Promise(resolve => setTimeout(resolve, 400)); 
 
-    // FIX 4: Flawless payload adhering to the strict CartItem schema
+    // ENTERPRISE UPGRADE: Flawless payload with maxStock synchronization
     addToCart({
       variantId: selectedVariant.id,
       productId: product.id,
@@ -85,7 +95,8 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
       originalPrice: isVariantOnSale ? originalPrice : undefined,
       quantity: 1,
       image: primaryImage,
-      length: selectedLength || undefined
+      length: selectedLength || undefined,
+      maxStock: selectedVariant.stock_quantity // <-- CRITICAL: Powers the CartDrawer Ceiling
     });
 
     setIsAdding(false);
@@ -94,12 +105,19 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
     // Auto-close gracefully after success
     setTimeout(() => {
       onClose();
-    }, 1000);
+    }, 800);
+  };
+
+  const handleSelectVariant = (variant: ProductVariant) => {
+    if (variant.stock_quantity === 0) return;
+    triggerHaptic('light');
+    setSelectedVariant(variant);
   };
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center pointer-events-none">
+      {/* FIX: Removed iOS Safari pointer-events trap */}
+      <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
         
         {/* Darkened Blur Backdrop */}
         <motion.div
@@ -107,7 +125,7 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="absolute inset-0 bg-background/60 backdrop-blur-sm pointer-events-auto"
+          className="absolute inset-0 bg-background/60 backdrop-blur-sm cursor-pointer"
         />
 
         {/* Modal Container: Bottom sheet on mobile, centered card on desktop */}
@@ -116,18 +134,19 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
           animate={{ y: 0, scale: 1, opacity: 1 }}
           exit={{ y: '100%', scale: 0.95, opacity: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="relative w-full max-w-md bg-background border border-border/50 shadow-2xl rounded-t-3xl md:rounded-3xl overflow-hidden pointer-events-auto pb-safe flex flex-col max-h-[85vh]"
+          className="relative w-full max-w-md bg-background border border-border/50 shadow-2xl rounded-t-3xl md:rounded-3xl overflow-hidden pb-[max(env(safe-area-inset-bottom),1rem)] flex flex-col max-h-[85vh]"
         >
           
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-border/50 shrink-0">
             <h3 className="font-serif font-bold text-lg text-foreground tracking-tight">Select Options</h3>
             <button 
+              type="button"
               onClick={onClose}
-              className="p-2 rounded-full bg-foreground/5 hover:bg-foreground/10 text-foreground/70 hover:text-foreground transition-colors active:scale-95"
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-foreground/5 hover:bg-foreground/10 text-foreground/70 hover:text-foreground transition-colors active:scale-95 touch-manipulation -mr-2"
               aria-label="Close modal"
             >
-              <X size={18} />
+              <X size={20} className="pointer-events-none" />
             </button>
           </div>
 
@@ -142,10 +161,10 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
               <div className="flex flex-col justify-center">
                 <h4 className="font-medium text-foreground text-sm tracking-wide leading-snug">{product.title}</h4>
                 
-                {/* FIX 5: Sale Price UI Mirroring inside the modal */}
+                {/* Sale Price UI Mirroring inside the modal */}
                 <div className="flex items-baseline gap-2 mt-2">
                   <p className={`font-semibold text-xl tracking-tight ${isVariantOnSale ? 'text-destructive' : 'text-primary'}`}>
-                    KES {activePrice.toLocaleString('en-US')}
+                    {formatKES(activePrice)}
                   </p>
                   {isVariantOnSale && (
                     <p className="text-muted-foreground line-through text-xs font-medium">
@@ -155,14 +174,21 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
                 </div>
                 
                 {/* Dynamic Scarcity Indicator */}
-                {selectedVariant && selectedVariant.stock_quantity > 0 && selectedVariant.stock_quantity <= 5 && (
-                  <div className="flex items-center gap-1.5 mt-2 text-amber-600 bg-amber-50 dark:bg-amber-500/10 px-2 py-1 rounded-md w-fit">
-                    <AlertCircle size={12} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">
-                      Only {selectedVariant.stock_quantity} left
-                    </span>
-                  </div>
-                )}
+                <AnimatePresence mode="popLayout">
+                  {selectedVariant && selectedVariant.stock_quantity > 0 && selectedVariant.stock_quantity <= 5 && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      className="flex items-center gap-1.5 mt-2 text-amber-600 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-1 rounded-md w-fit border border-amber-500/20"
+                    >
+                      <AlertCircle size={12} />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">
+                        Only {selectedVariant.stock_quantity} left
+                      </span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
 
@@ -189,9 +215,10 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
                   return (
                     <button
                       key={variant.id}
+                      type="button"
                       disabled={isOutOfStock}
-                      onClick={() => setSelectedVariant(variant)}
-                      className={`relative flex items-center justify-center py-3 px-2 rounded-xl text-sm font-semibold transition-all duration-200 border ${
+                      onClick={() => handleSelectVariant(variant)}
+                      className={`relative flex items-center justify-center py-3.5 px-2 rounded-xl text-sm font-semibold transition-all duration-200 border touch-manipulation ${
                         isSelected 
                           ? 'border-primary bg-primary text-primary-foreground shadow-md scale-[0.98]' 
                           : isOutOfStock
@@ -217,9 +244,10 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
           {/* Footer Action */}
           <div className="p-5 border-t border-border/50 bg-background/95 backdrop-blur-md shrink-0">
             <button
+              type="button"
               onClick={handleConfirmAdd}
               disabled={isAdding || isSuccess || !selectedVariant || selectedVariant.stock_quantity === 0}
-              className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-semibold tracking-wide transition-all duration-300 shadow-lg ${
+              className={`w-full flex items-center justify-center gap-2 py-4 rounded-xl text-sm font-semibold tracking-wide transition-all duration-300 shadow-lg touch-manipulation ${
                 isSuccess 
                   ? 'bg-green-500 text-white shadow-green-500/30'
                   : 'bg-foreground text-background hover:bg-foreground/90 shadow-foreground/20 active:scale-[0.98]'
@@ -227,13 +255,13 @@ export default function QuickAddModal({ isOpen, onClose, product }: QuickAddModa
             >
               {isAdding ? (
                 <span className="animate-pulse flex items-center gap-2">
-                  <ShoppingBag size={18} strokeWidth={2} /> Securing...
+                  <ShoppingBag size={18} strokeWidth={2} className="pointer-events-none" /> Securing...
                 </span>
               ) : isSuccess ? (
-                <><Check size={18} strokeWidth={2.5} /> Added to Cart</>
+                <><Check size={18} strokeWidth={2.5} className="pointer-events-none" /> Added to Cart</>
               ) : (
                 <>
-                  <ShoppingBag size={18} strokeWidth={2} /> 
+                  <ShoppingBag size={18} strokeWidth={2} className="pointer-events-none" /> 
                   Add {selectedLength ? `${selectedLength}" ` : ''}to Cart
                 </>
               )}
