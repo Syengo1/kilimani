@@ -1,61 +1,59 @@
-import { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { DesktopNav } from '@/components/dashboard/DesktopNav';
-import { MobileNav } from '@/components/dashboard/MobileNav';
 import { MobileHeader } from '@/components/dashboard/MobileHeader';
+import { MobileNav } from '@/components/dashboard/MobileNav';
 
-export default async function DashboardLayout({ children }: { children: ReactNode }) {
+export type AppRole = 'super_admin' | 'admin' | 'cashier';
+
+export default async function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const supabase = await createClient();
 
-  // 1. STRICT AUTHENTICATION GATE
-  // If no user session exists, forcefully bounce them to the login screen before rendering anything.
+  // 1. Authenticate the User
   const { data: { user }, error: authError } = await supabase.auth.getUser();
-
   if (authError || !user) {
-    redirect('/login'); 
+    redirect('/login');
   }
 
-  // 2. SECURE ROLE FETCHING
-  const { data: profile, error: profileError } = await supabase
+  // 2. Fetch their strictly verified Role from the staff_profiles table
+  const { data: profile } = await supabase
     .from('staff_profiles')
-    .select('role')
+    .select('role, full_name')
     .eq('id', user.id)
     .single();
 
-  if (profileError && profileError.code !== 'PGRST116') {
-    // Log unexpected errors, but ignore "No Rows Found" (PGRST116) if a profile is still pending creation
-    console.error("Dashboard Layout - Profile fetch error:", profileError);
+  // If no role is found, they are a regular customer, kick them out to the storefront
+  if (!profile || !profile.role) {
+    redirect('/'); 
   }
 
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin';
+  const role = profile.role as AppRole;
+  const userName = profile.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Staff Member';
 
   return (
-    <div className="flex flex-col md:flex-row h-[100dvh] w-full bg-background text-foreground overflow-hidden selection:bg-primary/20">
+    <div className="flex h-[100dvh] w-full bg-background overflow-hidden font-sans selection:bg-primary/20">
       
-      {/* Navigation Injections */}
-      <DesktopNav isAdmin={isAdmin} />
+      {/* DESKTOP: Secure Role-Based Sidebar */}
+      <DesktopNav userRole={role} userName={userName} />
       
-      <div className="flex-1 flex flex-col min-h-0 relative bg-foreground/[0.01]">
-        <MobileHeader />
+      {/* MOBILE: Top Header & Bottom Navigation */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+        <MobileHeader userName={userName} userRole={role} />
         
-        {/* 3. PREMIUM SAAS BACKGROUND TEXTURE */}
-        {/* Injects a subtle, luxurious grid pattern behind the main dashboard workspace */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(var(--foreground-rgb),0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(var(--foreground-rgb),0.03)_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
-        
-        {/* pb-24 ensures the bottom content isn't hidden behind the MobileNav on small screens.
-          md:pb-8 removes this massive padding on desktop where the sidebar is used.
-        */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8 pb-24 md:pb-8 custom-scrollbar relative z-10">
-          {/* Subtle fade-in animation ensures page transitions feel incredibly smooth */}
-          <div className="max-w-7xl mx-auto h-full animate-in fade-in duration-500">
+        {/* The Main Dashboard Workspace with Entry Animation */}
+        <main className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 lg:p-10 pb-24 md:pb-10 bg-stone-50 dark:bg-background transition-colors duration-300">
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-both">
             {children}
           </div>
         </main>
 
-        <MobileNav isAdmin={isAdmin} />
+        <MobileNav userRole={role} />
       </div>
-      
+
     </div>
   );
 }
