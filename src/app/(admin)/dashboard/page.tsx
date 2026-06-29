@@ -94,7 +94,7 @@ export default async function AdminDashboardPage() {
         {/* LAUNCH POS TERMINAL (Takes full width for Cashiers, 5 cols for Admins) */}
         <div className={`col-span-1 ${role === 'cashier' ? 'lg:col-span-12' : 'lg:col-span-5'}`}>
           <Link 
-            href="/admin/pos" 
+            href="/dashboard/pos" 
             className="group relative flex flex-col items-center justify-center gap-6 p-10 h-full bg-stone-950 dark:bg-card rounded-3xl border border-border overflow-hidden hover:shadow-2xl transition-all duration-300 hover:-translate-y-1"
           >
             {/* Ambient Background Glow */}
