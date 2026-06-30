@@ -9,7 +9,7 @@ const MPESA_PASSKEY = process.env.MPESA_PASSKEY!;
 const MPESA_SHORTCODE = process.env.MPESA_SHORTCODE!;
 // Your production URL (e.g., https://kilimanihair.com)
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL!; 
-const DARAJA_ENV = process.env.NODE_ENV === 'production' ? 'api' : 'sandbox';
+const DARAJA_ENV = process.env.MPESA_ENV === 'live' ? 'api' : 'sandbox';
 
 // Helper to format phone to Safaricom standard: 2547XXXXXXXX
 function formatSafaricomNumber(phone: string): string {
