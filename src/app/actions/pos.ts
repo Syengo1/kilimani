@@ -14,6 +14,7 @@ export async function syncOfflineOrders(orders: OfflineOrderPayload[]) {
       // Execute the Secure POS RPC created in Phase 1
       const { data, error } = await supabase.rpc('process_pos_checkout', {
         p_cashier_id: order.cashierId,
+        p_payment_method: order.paymentMethod,
         p_amount_cash: order.amountCash,
         p_amount_mpesa: order.amountMpesa,
         p_mpesa_receipt: order.mpesaReceipt || null,

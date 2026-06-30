@@ -20,6 +20,6 @@ export default async function POSPage() {
 
   const cashierName = profile?.full_name || user.email?.split('@')[0] || 'Unknown Cashier';
 
-  // 3. Pass data securely to the Client UI
-  return <POSClient cashierName={cashierName} />;
+  // 3. Pass BOTH the name and the strict UUID securely to the Client UI
+  return <POSClient cashierName={cashierName} cashierId={user.id} />;
 }

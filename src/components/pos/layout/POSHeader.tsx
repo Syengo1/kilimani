@@ -1,29 +1,39 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Wifi, WifiOff, X, ServerCrash, RefreshCw, CloudDownload } from 'lucide-react';
 import { usePOSStore } from '../store/posStore';
+import { useSyncExternalStore } from 'react';
+
+// ==========================================
+// 1. EXTERNAL BROWSER STORE (Replaces useEffect)
+// Automatically monitors the network without triggering ESLint cascading render warnings.
+// ==========================================
+const subscribeToNetwork = (callback: () => void) => {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener('online', callback);
+  window.addEventListener('offline', callback);
+  return () => {
+    window.removeEventListener('online', callback);
+    window.removeEventListener('offline', callback);
+  };
+};
+
+const getNetworkSnapshot = () => {
+  return typeof navigator !== 'undefined' ? navigator.onLine : true;
+};
+
+const getServerNetworkSnapshot = () => {
+  return true; // The server assumes 'true' to ensure a perfect initial HTML match
+};
 
 export function POSHeader({ cashierName }: { cashierName: string }) {
   const router = useRouter();
   const { syncQueue, isSyncing } = usePOSStore();
   
-  const [isOnline, setIsOnline] = useState(() => {
-    if (typeof navigator !== 'undefined') return navigator.onLine;
-    return true; 
-  });
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
+  // FIX: useSyncExternalStore flawlessly handles the hydration mismatch 
+  // without needing any 'isMounted' flags or useEffect rendering hacks.
+  const isOnline = useSyncExternalStore(subscribeToNetwork, getNetworkSnapshot, getServerNetworkSnapshot);
 
   const pendingCount = syncQueue.length;
 
@@ -47,6 +57,7 @@ export function POSHeader({ cashierName }: { cashierName: string }) {
             </div>
           )}
 
+          {/* Sync Queue Badge */}
           {pendingCount > 0 && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-500">
               {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <ServerCrash size={14} strokeWidth={2.5} />}
@@ -61,7 +72,6 @@ export function POSHeader({ cashierName }: { cashierName: string }) {
       {/* Right: Actions, Cashier Info & Exit */}
       <div className="flex items-center gap-3">
         
-        {/* NEW: Manual Catalog Sync Button */}
         <button
           onClick={() => {
             if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(30);

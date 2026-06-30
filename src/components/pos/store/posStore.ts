@@ -37,6 +37,7 @@ export interface POSCartItem {
 export interface OfflineOrderPayload {
   localId: string; 
   cashierId: string;
+  paymentMethod: 'cash' | 'mpesa' | 'split';
   items: { variant_id: string; quantity: number; unit_price: number }[];
   amountCash: number;
   amountMpesa: number;
@@ -65,7 +66,14 @@ interface POSStore {
   clearTicket: () => void;
   setIsCartOpen: (isOpen: boolean) => void; 
   
-  processOfflineCheckout: (cashierId: string, amountCash: number, amountMpesa: number, mpesaReceipt?: string) => void;
+  processOfflineCheckout: (
+    cashierId: string, 
+    paymentMethod: 'cash' | 'mpesa' | 'split', // <-- NEW 
+    amountCash: number, 
+    amountMpesa: number, 
+    mpesaReceipt?: string
+  ) => void;
+
   dequeueOrder: (localId: string) => void;
   setSyncing: (status: boolean) => void;
 }
@@ -127,13 +135,16 @@ export const usePOSStore = create<POSStore>()(
 
       clearTicket: () => set({ activeTicket: [], isCartOpen: false }),
 
-      processOfflineCheckout: (cashierId, amountCash, amountMpesa, mpesaReceipt) => {
+      processOfflineCheckout: (cashierId, paymentMethod, amountCash, amountMpesa, mpesaReceipt) => {
         const { activeTicket, syncQueue, catalog } = get();
         if (activeTicket.length === 0) return;
 
         const payload: OfflineOrderPayload = {
           localId: crypto.randomUUID(), 
-          cashierId, amountCash, amountMpesa,
+          cashierId, 
+          paymentMethod, // <-- NEW: Save the mode to the payload
+          amountCash, 
+          amountMpesa,
           mpesaReceipt: mpesaReceipt?.toUpperCase(),
           timestamp: new Date().toISOString(),
           items: activeTicket.map(item => ({ variant_id: item.variantId, quantity: item.quantity, unit_price: item.price }))
