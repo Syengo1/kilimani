@@ -7,6 +7,9 @@ import { createNewCategory, createNewCollection } from '@/app/(admin)/dashboard/
 export type ProductType = 'hair' | 'accessory' | 'haircare';
 
 interface TaxonomySectionProps {
+  // FIX: Added name props
+  name: string;
+  setName: (n: string) => void;
   productType: ProductType;
   setProductType: (t: ProductType) => void;
   description: string;
@@ -21,6 +24,7 @@ interface TaxonomySectionProps {
 }
 
 export default function TaxonomySection({
+  name, setName,
   productType, setProductType,
   description, setDescription,
   categoryId, setCategoryId,
@@ -91,6 +95,22 @@ export default function TaxonomySection({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-border/50">
+        
+        {/* FIX: The new explicit Display Name input */}
+        <div className="md:col-span-2 space-y-2">
+          <label className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest">
+            Display Name <span className="text-destructive">*</span>
+          </label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={isWorking}
+            placeholder="e.g., 24'' Peruvian Straight Lace Front"
+            className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-colors shadow-sm disabled:opacity-50"
+          />
+        </div>
+
         <div className="space-y-2">
           <label className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest flex justify-between items-center">
             <span>Category Taxonomy</span>
@@ -138,7 +158,6 @@ export default function TaxonomySection({
         </div>
       </div>
 
-      {/* NEW: PRODUCT DESCRIPTION FIELD */}
       <div className="pt-4 border-t border-border/50 space-y-2">
         <label className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest flex justify-between items-center">
           <span>Global Product Description</span>

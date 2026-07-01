@@ -11,13 +11,11 @@ export const metadata: Metadata = {
 }
 
 export default async function NewProductPage() {
-  // Fetch taxonomy data (Categories & Collections) server-side
   const taxonomy = await getTaxonomy()
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 md:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-10">
       
-      {/* Premium Header Section */}
       <div className="flex flex-col gap-5">
         <Link 
           href="/dashboard/inventory"
@@ -34,16 +32,15 @@ export default async function NewProductPage() {
             <h1 className="text-2xl md:text-3xl font-black tracking-tight text-foreground">
               Initialize Product Architecture
             </h1>
+            {/* FIX: Updated instructions to reflect the manual naming process */}
             <p className="text-sm text-muted-foreground mt-2 max-w-2xl leading-relaxed">
-              Select a core classification (Hair, Accessory, or Consumable) to dynamically configure the SKU matrix. The system will automatically compute the product&apos;s display name based on your Category and Collection selections.
+              Select a core classification (Hair, Accessory, or Consumable), assign a global display name, and dynamically configure the SKU matrix.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Client Interactive Form Orchestrator */}
       <div className="relative mt-2 border-t border-border/50 pt-6">
-        {/* We pass the server-fetched taxonomy directly into the client form */}
         <ProductForm taxonomy={taxonomy} />
       </div>
       

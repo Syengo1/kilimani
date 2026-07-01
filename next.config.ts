@@ -1,21 +1,23 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-
-  allowedDevOrigins: [
-    '192.168.100.22', 
-    '192.168.100.22:3000'
-  ],
-  
-  // 1. Core Build & Security Settings
+  // ==========================================
+  // 1. CORE BUILD & DEPLOYMENT
+  // ==========================================
   reactStrictMode: true,
-  poweredByHeader: false, // Removes 'X-Powered-By: Next.js' to prevent framework targeting
-  compress: true, // Enables gzip/brotli compression for better network transfer
+  poweredByHeader: false, // Prevents framework targeting attacks
+  compress: true, // Enables gzip/brotli compression
+  output: 'standalone', // The enterprise standard for Dockerized and isolated deployments
 
-  // 2. Enterprise Image Optimization
+  // ==========================================
+  // 2. ENTERPRISE IMAGE OPTIMIZATION
+  // ==========================================
   images: {
-    formats: ['image/avif', 'image/webp'], // Forces browser to request modern, highly-compressed formats
-    minimumCacheTTL: 31536000, // Caches images for 1 year to aggressively reduce storage egress bandwidth
+    formats: ['image/avif', 'image/webp'],
+    minimumCacheTTL: 31536000, // Aggressive 1-year caching to minimize egress costs
+    // Explicit sizing matrices to prevent CPU-exhaustion attacks from dynamic resizing
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     remotePatterns: [
       {
         protocol: "https",
@@ -32,7 +34,18 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // 3. Strict HTTP Security Headers
+  // ==========================================
+  // 3. SERVER TELEMETRY & LOGGING
+  // ==========================================
+  logging: {
+    fetches: {
+      fullUrl: true, // Exposes deep backend query parameters for easier debugging
+    },
+  },
+
+  // ==========================================
+  // 4. STRICT HTTP SECURITY HEADERS
+  // ==========================================
   async headers() {
     return [
       {
@@ -52,11 +65,11 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'X-Frame-Options',
-            value: 'DENY' // Prevents clickjacking by blocking iframe embedding of the site
+            value: 'DENY' // Prevents clickjacking by blocking iframe embedding
           },
           {
             key: 'X-XSS-Protection',
-            value: '1; mode=block' // Protects against legacy Cross-Site Scripting attacks
+            value: '1; mode=block' // Protects against legacy XSS attacks
           },
           {
             key: 'Referrer-Policy',
@@ -64,7 +77,7 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            // THE FIX: geolocation=(self) allows the DeliveryAddressForm to access GPS securely
+            // geolocation=(self) allows safe access for address delivery mapping
             value: 'camera=(), microphone=(), geolocation=(self), interest-cohort=()' 
           }
         ]
@@ -72,11 +85,18 @@ const nextConfig: NextConfig = {
     ];
   },
 
-  // 4. Compiler Optimizations
+  // ==========================================
+  // 5. COMPILER & EXPERIMENTAL OPTIMIZATIONS
+  // ==========================================
   experimental: {
     // Prevents barrel-file bloat by transforming named imports at compile time
     optimizePackageImports: ['lucide-react', 'framer-motion'], 
+    
+    // Protects the server from memory-overflow attacks via massive payload injections
+    serverActions: {
+      bodySizeLimit: '3mb', 
+    },
   }
 };
 
-export default nextConfig; 
+export default nextConfig;

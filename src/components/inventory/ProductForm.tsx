@@ -11,6 +11,7 @@ import VariantMatrix, { VariantState } from './form/VariantMatrix'
 
 interface InitialProductData {
   id: string;
+  name: string; // FIX: Added name
   product_type: ProductType;
   description?: string;
   category_id: string;
@@ -47,6 +48,7 @@ export default function ProductForm({ taxonomy, initialData }: ProductFormProps)
   const [error, setError] = useState<string | null>(null)
 
   // Sub-States Managed by the Orchestrator
+  const [name, setName] = useState(initialData?.name || '') // FIX: Name state initialized
   const [productType, setProductType] = useState<ProductType>(initialData?.product_type || 'hair')
   const [description, setDescription] = useState(initialData?.description || '')
   const [categoryId, setCategoryId] = useState(initialData?.category_id || '')
@@ -80,6 +82,8 @@ export default function ProductForm({ taxonomy, initialData }: ProductFormProps)
     e.preventDefault()
     setError(null)
 
+    // FIX: Client-side validation for the new name field
+    if (!name.trim()) return triggerError("Please enter a Display Name for the product.")
     if (!categoryId) return triggerError("Please select a Category.")
 
     const cleanVariants = variants.map(v => ({ ...v, sku: v.sku.trim().toUpperCase() }))
@@ -101,17 +105,23 @@ export default function ProductForm({ taxonomy, initialData }: ProductFormProps)
         uploadedImageUrls.push(publicUrl)
       }
     } catch (err) {
-      // FIX: Utilize the 'err' variable to log actual network/storage issues to the console
       console.error("Storage upload error:", err);
       setIsUploading(false)
       return triggerError("Failed to upload images. Check network.")
     }
 
     startTransition(async () => {
-      const productPayload = { product_type: productType, description: description.trim(), category_id: categoryId, collection_id: collectionId || null, base_attributes: {} }
+      // FIX: Inject name into the payload
+      const productPayload = { 
+        name: name.trim(), 
+        product_type: productType, 
+        description: description.trim(), 
+        category_id: categoryId, 
+        collection_id: collectionId || null, 
+        base_attributes: {} 
+      }
       
       const variantPayload = cleanVariants.map(v => {
-        // FIX: Replaced 'any' with the strictly imported VariantPayload interface
         const payload: VariantPayload = { 
           sku: v.sku, 
           stock_quantity: v.stock, 
@@ -146,7 +156,9 @@ export default function ProductForm({ taxonomy, initialData }: ProductFormProps)
         </div>
       )}
 
+      {/* FIX: Passed name bindings */}
       <TaxonomySection 
+        name={name} setName={setName}
         productType={productType} setProductType={setProductType}
         description={description} setDescription={setDescription}
         categoryId={categoryId} setCategoryId={setCategoryId}

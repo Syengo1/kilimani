@@ -44,10 +44,10 @@ export default function Footer() {
           <div className="flex flex-col items-center md:items-start text-center md:text-left">
             <h4 className="font-bold text-sm text-foreground uppercase tracking-wider mb-5">Shop</h4>
             <div className="flex flex-col gap-3 text-sm">
-              <Link href="/collections/featured" className="text-muted-foreground hover:text-foreground transition-colors">Featured</Link>
-              <Link href="/collections/wigs" className="text-muted-foreground hover:text-foreground transition-colors">Premium Wigs</Link>
-              <Link href="/collections/bundles" className="text-muted-foreground hover:text-foreground transition-colors">Bundles</Link>
-              <Link href="/collections/accessories" className="text-muted-foreground hover:text-foreground transition-colors">Accessories</Link>
+              <Link href="/shop/featured" className="text-muted-foreground hover:text-foreground transition-colors">Featured</Link>
+              <Link href="/shop/wigs" className="text-muted-foreground hover:text-foreground transition-colors">Premium Wigs</Link>
+              <Link href="/shop/bundles" className="text-muted-foreground hover:text-foreground transition-colors">Bundles</Link>
+              <Link href="/shop/accessories" className="text-muted-foreground hover:text-foreground transition-colors">Accessories</Link>
             </div>
           </div>
 

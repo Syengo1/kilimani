@@ -11,6 +11,7 @@ import { revalidatePath } from 'next/cache';
 export type ProductType = 'hair' | 'accessory' | 'haircare';
 
 export interface BaseProductPayload {
+  name: string; // FIX: Added the newly created database column
   product_type: ProductType;
   category_id: string;
   collection_id: string | null;
@@ -51,7 +52,7 @@ export async function getTaxonomy() {
 
 /**
  * MASTER INVENTORY FETCH
- * Retrieves all products, nested relational data, and bypasses the deleted 'title' column.
+ * Retrieves all products, nested relational data, and includes the new 'name' column.
  */
 export async function getInventoryData() {
   const supabase = await createClient();
@@ -60,6 +61,7 @@ export async function getInventoryData() {
     .from('products')
     .select(`
       id,
+      name,
       product_type,
       description,
       created_at,
@@ -89,6 +91,7 @@ export async function getProductById(id: string) {
     .from('products')
     .select(`
       id,
+      name,
       product_type,
       description,
       category_id,
@@ -136,6 +139,7 @@ export async function createFullProduct(
       .from('products')
       .insert([
         {
+          name: productPayload.name.trim(), // FIX: Store the new product name
           product_type: productPayload.product_type,
           description: productPayload.description,
           category_id: productPayload.category_id,
@@ -209,6 +213,7 @@ export async function updateFullProduct(
     const { error: productUpdateError } = await supabase
       .from('products')
       .update({
+        name: productPayload.name.trim(), // FIX: Update the name
         product_type: productPayload.product_type,
         description: productPayload.description,
         category_id: productPayload.category_id,
@@ -289,7 +294,6 @@ export async function updateFullProduct(
 
     // E. Append Newly Generated Media Files
     if (newImageUrls.length > 0) {
-      // Determine current maximum placement order to append accurately
       const { data: currentImages } = await supabase
         .from('product_images')
         .select('display_order')
@@ -336,7 +340,7 @@ export async function deleteProduct(id: string) {
       .eq('id', id);
 
     if (error) {
-      // Gracefully prevent critical data loss for ledger accounting records (Code: 23503 RESTRICT Lock)
+      // Gracefully prevent critical data loss for ledger accounting records
       if (error.code === '23503') {
         return {
           success: false,
@@ -396,6 +400,7 @@ export async function getProductByRef(refId: string) {
     .select(`
       id,
       ref_id,
+      name,
       product_type,
       description,
       category:categories(name),

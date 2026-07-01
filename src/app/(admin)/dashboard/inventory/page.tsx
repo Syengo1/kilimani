@@ -9,6 +9,9 @@ export const metadata: Metadata = {
   description: "Manage your master product catalog and SKU variants.",
 }
 
+// Ensure the inventory dashboard never serves stale cached data
+export const dynamic = 'force-dynamic';
+
 // 1. Define strict Types matching our newly upgraded Schema
 type ProductType = 'hair' | 'accessory' | 'haircare';
 type TaxonomyRecord = { name: string };
@@ -16,6 +19,7 @@ type TaxonomyRecord = { name: string };
 // 2. Strictly type the raw Supabase payload
 interface RawInventoryItem {
   id: string;
+  name?: string; // FIX: Added the database 'name' column
   product_type: ProductType; 
   created_at?: string;
   category?: TaxonomyRecord | TaxonomyRecord[] | null;
@@ -27,6 +31,7 @@ interface RawInventoryItem {
 // 3. NEW: Strictly type the formatted output to eliminate implicit 'any' errors
 interface FormattedInventoryItem {
   id: string;
+  name: string; // FIX: Added the required 'name' property for the Client
   product_type: ProductType;
   category: TaxonomyRecord | null;
   collection: TaxonomyRecord | null;
@@ -44,6 +49,7 @@ export default async function InventoryPage() {
   // 4. Map the data and bind it to the FormattedInventoryItem array
   const formattedInventory: FormattedInventoryItem[] = (inventoryRaw as unknown as RawInventoryItem[] || []).map((item) => ({
     id: item.id,
+    name: item.name || 'Unnamed Product', // FIX: Map the name to the Client payload
     product_type: item.product_type || 'hair', 
     category: (Array.isArray(item.category) ? item.category[0] : item.category) ?? null,
     collection: (Array.isArray(item.collection) ? item.collection[0] : item.collection) ?? null,

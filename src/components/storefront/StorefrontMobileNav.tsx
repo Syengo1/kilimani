@@ -18,7 +18,7 @@ function MobileNavContent() {
 
   const navItems = [
     { href: '/', label: 'Home', icon: Home },
-    { href: '/collections', label: 'Shop', icon: Sparkles },
+    { href: '/shop', label: 'Shop', icon: Sparkles },
     { href: '/search', label: 'Search', icon: Search },
   ];
 

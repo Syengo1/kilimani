@@ -50,7 +50,7 @@ export default function StorefrontHeader() {
 
   const links = [
     { href: '/', label: 'Home' },
-    { href: '/collections', label: 'All Collections' },
+    { href: '/shop', label: 'All Collections' },
     { href: '/about', label: 'Our Story' },
   ];
 

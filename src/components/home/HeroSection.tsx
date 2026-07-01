@@ -63,7 +63,7 @@ export default function HeroSection() {
           {/* Call To Action Suite */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full sm:w-auto text-sm font-semibold tracking-wide mt-2">
             <Link
-              href="/collections"
+              href="/shop"
               className="group flex items-center justify-center gap-2 px-8 py-4 bg-primary text-primary-foreground rounded-xl shadow-lg shadow-primary/20 hover:shadow-primary/30 hover:opacity-95 active:scale-[0.98] transition-all duration-300"
             >
               Explore Catalog
