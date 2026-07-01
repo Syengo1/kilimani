@@ -7,6 +7,7 @@ import { LayoutDashboard, Users, BarChart3, Package, Settings, LogOut, Loader2, 
 import { ThemeToggle } from './ThemeToggle';
 import { createClient } from '@/lib/supabase/client';
 import { AppRole } from '@/app/(admin)/dashboard/layout';
+import { secureSignOut } from '@/app/actions/auth';
 
 // The Strict RBAC Navigation Matrix
 const getNavigationLinks = (role: AppRole) => {
@@ -51,9 +52,8 @@ export function DesktopNav({ userRole, userName }: { userRole: AppRole; userName
   const handleSignOut = async () => {
     try {
       setIsSigningOut(true);
-      const supabase = createClient();
-      await supabase.auth.signOut();
-      router.push('/login');
+      // Execute the server action directly
+      await secureSignOut();
     } catch (error) {
       console.error('Error signing out:', error);
       setIsSigningOut(false);

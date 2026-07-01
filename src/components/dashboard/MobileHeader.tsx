@@ -6,6 +6,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { LogOut, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { AppRole } from '@/app/(admin)/dashboard/layout';
+import { secureSignOut } from '@/app/actions/auth';
 
 export function MobileHeader({ userName, userRole }: { userName: string; userRole: AppRole }) {
   const router = useRouter();
@@ -15,9 +16,8 @@ export function MobileHeader({ userName, userRole }: { userName: string; userRol
     try {
       if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
       setIsSigningOut(true);
-      const supabase = createClient();
-      await supabase.auth.signOut();
-      router.push('/login');
+      // Execute the server action directly
+      await secureSignOut();
     } catch (error) {
       console.error('Error signing out:', error);
       setIsSigningOut(false);
@@ -39,7 +39,7 @@ export function MobileHeader({ userName, userRole }: { userName: string; userRol
         <button 
           onClick={handleSignOut}
           disabled={isSigningOut}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-destructive/5 text-destructive hover:bg-destructive/10 transition-colors active:scale-95 touch-manipulation"
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-destructive/5 text-destructive hover:bg-destructive/10 transition-colors active:scale-95 touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
           aria-label="Secure Logout"
         >
           {isSigningOut ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} strokeWidth={2.5} />}

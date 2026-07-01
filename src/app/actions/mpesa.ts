@@ -1,8 +1,6 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
-
-// These should be set in your .env.local file
 const MPESA_CONSUMER_KEY = process.env.MPESA_CONSUMER_KEY!;
 const MPESA_CONSUMER_SECRET = process.env.MPESA_CONSUMER_SECRET!;
 const MPESA_PASSKEY = process.env.MPESA_PASSKEY!;

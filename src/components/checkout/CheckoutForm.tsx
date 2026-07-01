@@ -220,7 +220,7 @@ export default function CheckoutForm({
             <div>
               <h4 className="text-sm font-bold text-foreground">Kilimani Flagship Studio Pick-Up</h4>
               <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                Galana Road, Nairobi. Ready for pickup within 2 hours of payment confirmation. We will call you immediately your package is compiled.
+                Latema Road, Nairobi. Ready for pickup within 2 hours of payment confirmation. We will call you immediately your package is compiled.
               </p>
             </div>
           </div>

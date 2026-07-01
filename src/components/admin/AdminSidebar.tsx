@@ -1,16 +1,19 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
   MonitorSmartphone, 
   Package, 
   ShoppingBag, 
   BarChart3, 
   Users, 
-  LogOut, 
-  ShieldAlert
+  LogOut,
+  Loader2
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import { secureSignOut } from '@/app/actions/auth';
 
 export type AppRole = 'super_admin' | 'admin' | 'cashier';
 
@@ -21,9 +24,22 @@ interface AdminSidebarProps {
 
 export default function AdminSidebar({ userRole, userName }: AdminSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(50);
+      setIsSigningOut(true);
+      // Execute the server action directly
+      await secureSignOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+      setIsSigningOut(false);
+    }
+  };
 
   // THE RBAC NAVIGATION MATRIX
-  // We mathematically define which roles have clearance for which routes
   const navigation = [
     {
       name: 'POS Terminal',
@@ -57,7 +73,6 @@ export default function AdminSidebar({ userRole, userName }: AdminSidebarProps) 
     },
   ];
 
-  // Filter the navigation array based strictly on the user's role clearance
   const authorizedLinks = navigation.filter(link => 
     link.allowedRoles.includes(userRole)
   );
@@ -113,10 +128,16 @@ export default function AdminSidebar({ userRole, userName }: AdminSidebarProps) 
             </span>
           </div>
           <button 
-            className="p-2.5 rounded-lg bg-stone-800 hover:bg-destructive hover:text-destructive-foreground transition-colors text-stone-400 group"
+            onClick={handleSignOut}
+            disabled={isSigningOut}
+            className="p-2.5 rounded-lg bg-stone-800 hover:bg-destructive hover:text-destructive-foreground transition-colors text-stone-400 group disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             aria-label="Secure Logout"
           >
-            <LogOut size={16} strokeWidth={2.5} className="group-hover:-translate-x-0.5 transition-transform" />
+            {isSigningOut ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <LogOut size={16} strokeWidth={2.5} className="group-hover:-translate-x-0.5 transition-transform" />
+            )}
           </button>
         </div>
       </div>
